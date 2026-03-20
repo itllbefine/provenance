@@ -1,10 +1,11 @@
 import { EditorContent, useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
+import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { RawProvenanceEvent, Suggestion } from '../api'
-import { flushProvenanceEvents } from '../api'
+import type { RawProvenanceEvent, Suggestion, TimelineSpan } from '../api'
+import { flushProvenanceEvents, getHeatmapSpans } from '../api'
 import { ProvenanceExtension } from '../provenance/ProvenanceExtension'
-import { HeatmapExtension, heatmapKey } from '../provenance/HeatmapExtension'
+import { HeatmapExtension, heatmapKey, spanCssClass } from '../provenance/HeatmapExtension'
 import type { SaveStatus } from '../App'
 import ProvenanceDebugPanel from './ProvenanceDebugPanel'
 import YounessModal from './YounessModal'
@@ -36,6 +37,60 @@ const SAVE_LABEL: Record<SaveStatus, string> = {
   error: 'Save failed',
 }
 
+/**
+ * Build a ProseMirror DecorationSet from backend provenance spans.
+ *
+ * The spans are ordered text fragments whose concatenation (minus '\n'
+ * boundary markers) equals the document's plain text.  We walk the PM
+ * document's text nodes in order, advancing through the span characters
+ * in lockstep, and create one Decoration.inline per contiguous run of
+ * the same (origin, edit_type).
+ */
+function buildDecorationsFromSpans(
+  doc: import('@tiptap/pm/model').Node,
+  spans: TimelineSpan[],
+): DecorationSet {
+  // Flatten spans into per-character provenance, skipping boundaries and '\n'.
+  const chars: { cls: string }[] = []
+  for (const span of spans) {
+    if (span.origin === 'boundary') continue
+    const cls = `heatmap-span ${spanCssClass(span.origin, span.edit_type)}`
+    for (const ch of span.text) {
+      if (ch === '\n') continue
+      chars.push({ cls })
+    }
+  }
+
+  const decorations: Decoration[] = []
+  let charIdx = 0
+
+  doc.descendants((node, pos) => {
+    if (!node.isText || !node.text) return
+    let runStart = pos
+    let runCls = charIdx < chars.length ? chars[charIdx].cls : ''
+
+    for (let i = 0; i < node.text.length; i++) {
+      const cls = charIdx < chars.length ? chars[charIdx].cls : ''
+      charIdx++
+
+      if (cls !== runCls) {
+        // Flush the previous run
+        if (runCls) {
+          decorations.push(Decoration.inline(runStart, pos + i, { class: runCls }))
+        }
+        runStart = pos + i
+        runCls = cls
+      }
+    }
+    // Flush the final run for this text node
+    if (runCls) {
+      decorations.push(Decoration.inline(runStart, pos + node.text.length, { class: runCls }))
+    }
+  })
+
+  return DecorationSet.create(doc, decorations)
+}
+
 /** Parse stored JSON string back to a ProseMirror doc object, or '' for empty. */
 function parseContent(raw: string) {
   try {
@@ -64,6 +119,7 @@ export default function EditorPanel({
   const [showDebug, setShowDebug] = useState(false)
   const [showYouness, setShowYouness] = useState(false)
   const [showTimeline, setShowTimeline] = useState(false)
+  const [heatmapLoading, setHeatmapLoading] = useState(false)
 
   // Refs to prevent stale closures in editor callbacks.
   // See the comment in the original EditorPanel for a full explanation.
@@ -242,6 +298,31 @@ export default function EditorPanel({
     }
   }
 
+  async function handleHeatmapToggle() {
+    if (!editor) return
+    const isEnabled = heatmapKey.getState(editor.state)?.enabled
+    if (isEnabled) {
+      // Turning off — just toggle
+      editor.chain().focus().toggleHeatmap().run()
+      return
+    }
+    // Turning on — flush pending events, then fetch provenance from backend
+    // and build a full decoration set before enabling.
+    setHeatmapLoading(true)
+    try {
+      await flushEvents()
+      const spans = await getHeatmapSpans(documentIdRef.current)
+      const decos = buildDecorationsFromSpans(editor.state.doc, spans)
+      editor.chain().focus().loadHeatmap(decos).run()
+    } catch (err) {
+      console.error('Heatmap load failed:', err)
+      // Fall back to showing whatever live decorations exist
+      editor.chain().focus().toggleHeatmap().run()
+    } finally {
+      setHeatmapLoading(false)
+    }
+  }
+
   // When the user switches to a different document, reload the editor content
   useEffect(() => {
     if (editor) {
@@ -313,11 +394,12 @@ export default function EditorPanel({
         <div className="toolbar-divider" />
 
         <button
-          onClick={() => editor.chain().focus().toggleHeatmap().run()}
+          onClick={() => void handleHeatmapToggle()}
           className={heatmapKey.getState(editor.state)?.enabled ? 'active' : ''}
+          disabled={heatmapLoading}
           title="Toggle heatmap view"
         >
-          Heat
+          {heatmapLoading ? 'Loading…' : 'Heat'}
         </button>
 
         <button

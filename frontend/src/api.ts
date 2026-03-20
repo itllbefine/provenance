@@ -157,6 +157,15 @@ export interface TimelineResponse {
   milestones: TimelineMilestone[]
 }
 
+export async function getHeatmapSpans(docId: string): Promise<TimelineSpan[]> {
+  const res = await fetch(`${BASE}/timeline/${docId}/heatmap`)
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({})) as { detail?: string }
+    throw new Error(body.detail ?? `Failed to load heatmap: ${res.statusText}`)
+  }
+  return res.json() as Promise<TimelineSpan[]>
+}
+
 export async function getTimeline(docId: string): Promise<TimelineResponse> {
   const res = await fetch(`${BASE}/timeline/${docId}`)
   if (!res.ok) {

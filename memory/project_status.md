@@ -58,7 +58,8 @@ Edit types: `grammar_fix`, `wording_change`, `organizational_move`.
 - `GET /youness/score/{doc_id}` — calls Claude Haiku to compute a 0–100 stylometric similarity score comparing the document against uploaded baseline samples. Also returns human_pct/ai_pct computed from provenance events.
 
 ### `timeline.py` — `/timeline` (also mounted at `/documents/{id}/timeline`)
-- `GET /timeline/{doc_id}` — returns text snapshots with diffs for the document timeline view. Uses periodic `text_snapshots` records rather than full event replay.
+- `GET /timeline/{doc_id}/heatmap` — replays all provenance events and returns the final (100%) provenance-tagged spans for the live editor heatmap.
+- `GET /timeline/{doc_id}` — returns 4 milestone snapshots (25/50/75/100%) with provenance-tagged spans for the timeline view.
 
 ### `classify.py`
 Classifies human edits into `human_grammar_fix`, `human_wording_change`, or `human_organizational_move`. Rule-based for simple cases; calls Claude Sonnet for ambiguous replacements.
@@ -100,7 +101,7 @@ Uses `html2canvas` + `jspdf` (dynamically imported to avoid bundle bloat). Each 
 Intercepts every ProseMirror transaction. Skips transactions where both inserted and deleted text are empty (e.g. Enter key). Tags events with `origin` and `edit_type` from transaction meta. Calls `onEvent` callback with a `RawProvenanceEvent`.
 
 ### `HeatmapExtension`
-Decorates text with CSS classes based on authorship. Toggle state stored in a ProseMirror plugin key (`heatmapKey`). Each decoration maps `(origin, edit_type)` to a class like `heatmap-span--human-grammar-fix`.
+Decorates text with CSS classes based on authorship. Toggle state stored in a ProseMirror plugin key (`heatmapKey`). Each decoration maps `(origin, edit_type)` to a class like `heatmap-span--human-grammar-fix`. Two decoration sources: (1) **backend-loaded** — `loadHeatmap` command accepts a `DecorationSet` built from replayed provenance events fetched via `GET /timeline/{doc_id}/heatmap`, covering all historical edits; (2) **live-tracked** — new edits in the current session are decorated immediately via `ReplaceStep` interception. The Heat button in EditorPanel is async: on toggle-on it flushes pending events, fetches heatmap spans, builds decorations with `buildDecorationsFromSpans()`, then dispatches `loadHeatmap`.
 
 ### `classifier.ts`
 Frontend classifier that assigns `edit_type` to human edits before they're sent to the backend, providing an initial classification that the backend may override.

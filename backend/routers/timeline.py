@@ -155,6 +155,50 @@ def _compress(doc: _DocBuffer) -> list[dict]:
 # ── Route ─────────────────────────────────────────────────────────────────────
 
 
+@router.get("/{doc_id}/heatmap", response_model=list[TimelineSpan])
+async def get_heatmap(
+    doc_id: str,
+    db: aiosqlite.Connection = Depends(get_db),
+):
+    """
+    Return provenance-tagged spans for the full current document.
+
+    Replays every provenance event to produce a per-character origin map,
+    then compresses it into contiguous spans — the same format the timeline
+    milestones use, but only the final (100 %) state.
+    """
+    async with db.execute(
+        "SELECT id FROM documents WHERE id = ?", (doc_id,)
+    ) as cursor:
+        if await cursor.fetchone() is None:
+            raise HTTPException(status_code=404, detail="Document not found")
+
+    async with db.execute(
+        """
+        SELECT from_pos, to_pos, inserted_text, deleted_text,
+               origin, edit_type, timestamp
+        FROM provenance_events
+        WHERE document_id = ?
+        ORDER BY timestamp ASC
+        """,
+        (doc_id,),
+    ) as cursor:
+        rows = await cursor.fetchall()
+
+    events = [dict(row) for row in rows]
+    if not events:
+        return []
+
+    doc_buffer: _DocBuffer = []
+    for event in events:
+        _apply_event(doc_buffer, event)
+
+    return [
+        TimelineSpan(text=s["text"], origin=s["origin"], edit_type=s["edit_type"])
+        for s in _compress(doc_buffer)
+    ]
+
+
 @router.get("/{doc_id}", response_model=TimelineResponse)
 async def get_timeline(
     doc_id: str,

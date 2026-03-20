@@ -15,11 +15,12 @@ interface HeatmapPluginState {
   decorations: DecorationSet
 }
 
-// Teach TypeScript about the custom command we're adding.
+// Teach TypeScript about the custom commands we're adding.
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
     heatmap: {
       toggleHeatmap: () => ReturnType
+      loadHeatmap: (decorations: DecorationSet) => ReturnType
     }
   }
 }
@@ -28,34 +29,32 @@ declare module '@tiptap/core' {
  * A TipTap extension that renders a provenance heatmap by placing inline
  * ProseMirror decorations over text ranges.
  *
- * Phase 3 only tracks two states:
- *   - "human" — text the user has typed or pasted in the current session
- *   - (no decoration) — text that existed before this session
+ * Decorations come from two sources:
+ *   1. **Loaded from backend** — the `loadHeatmap` command accepts a
+ *      pre-built DecorationSet (constructed from replayed provenance events)
+ *      and replaces the current set. This covers all historical edits.
+ *   2. **Live tracking** — every ReplaceStep in a transaction adds a new
+ *      inline decoration so edits made in the current session are colored
+ *      immediately without a round-trip.
  *
- * How it works:
- * - The extension registers a ProseMirror plugin with persistent state.
- * - On every transaction the plugin:
- *     1. Remaps existing decorations through the transaction's mapping
- *        (so decorations follow their text as surrounding text is inserted/deleted).
- *     2. Inspects each ReplaceStep for newly inserted text and adds a new
- *        decoration spanning [from, from + insertedSize).
- * - The `props.decorations` callback returns the DecorationSet only when
- *   heatmap mode is enabled — so toggling is just a state change, not a
- *   decoration rebuild.
- * - A `toggleHeatmap` command dispatches a transaction carrying a meta value
- *   that flips the enabled flag in the plugin state.
+ * The `props.decorations` callback returns the DecorationSet only when
+ * heatmap mode is enabled — toggling is just a state flip.
  */
 export const HeatmapExtension = Extension.create({
   name: 'heatmap',
 
   addCommands() {
     return {
-      // Dispatches a no-op transaction whose only purpose is to carry the
-      // { toggle: true } meta value, which the plugin state picks up.
       toggleHeatmap:
         () =>
         ({ tr, dispatch }) => {
           if (dispatch) dispatch(tr.setMeta(heatmapKey, { toggle: true }))
+          return true
+        },
+      loadHeatmap:
+        (decorations: DecorationSet) =>
+        ({ tr, dispatch }) => {
+          if (dispatch) dispatch(tr.setMeta(heatmapKey, { load: decorations }))
           return true
         },
     }
@@ -72,40 +71,50 @@ export const HeatmapExtension = Extension.create({
           },
 
           apply(tr, prev): HeatmapPluginState {
-            // Check whether this transaction carries the toggle signal.
-            const meta = tr.getMeta(heatmapKey) as { toggle?: boolean } | undefined
+            const meta = tr.getMeta(heatmapKey) as
+              | { toggle?: boolean; load?: DecorationSet }
+              | undefined
+
+            // Handle a full decoration set loaded from the backend.
+            // This replaces any existing decorations and enables the heatmap.
+            if (meta?.load) {
+              return { enabled: true, decorations: meta.load }
+            }
+
             const enabled = meta?.toggle ? !prev.enabled : prev.enabled
 
             // TipTap's setContent command (used for document switches) sets
             // 'preventUpdate' meta. Reset decorations so we don't carry stale
             // highlights from one document into the next.
-            // NOTE: We do NOT check addToHistory === false here because TipTap's
-            // own focus/blur plugin dispatches transactions with addToHistory:false,
-            // and those would incorrectly wipe all decorations on every focus event.
             if (tr.getMeta('preventUpdate')) {
               return { enabled, decorations: DecorationSet.empty }
             }
 
             // DecorationSet.map() remaps all stored positions through the
-            // transaction's step mappings. This keeps decorations attached to
-            // their text as other text is inserted or deleted around them.
+            // transaction's step mappings.
             let decorations = prev.decorations.map(tr.mapping, tr.doc)
 
             if (tr.docChanged) {
-              // Check whether this transaction came from accepting an AI suggestion.
               const aiMeta = tr.getMeta('ai_suggestion') as { edit_type?: string } | undefined
 
-              for (const step of tr.steps) {
-                // Only ReplaceStep involves actual text content changes.
+              // For multi-step transactions we need to map each step's
+              // positions forward through all subsequent steps so the
+              // decoration lands at the correct spot in tr.doc.
+              const { steps, mapping } = tr
+              for (let si = 0; si < steps.length; si++) {
+                const step = steps[si]
                 if (!(step instanceof ReplaceStep)) continue
 
-                // step.slice.content.size is the number of ProseMirror positions
-                // the inserted content occupies (roughly: characters + node boundaries).
                 const insertedSize = step.slice.content.size
                 if (insertedSize === 0) continue
 
-                // Choose the CSS modifier class based on who made the edit and
-                // what type of edit it was, giving each combination a distinct color.
+                // Map the step-local position through subsequent steps
+                // to get the position in tr.doc.
+                let from = step.from
+                for (let mi = si + 1; mi < steps.length; mi++) {
+                  from = mapping.maps[mi].map(from)
+                }
+
                 const spanClass = aiMeta
                   ? aiEditTypeClass(aiMeta.edit_type)
                   : humanEditTypeClass(
@@ -113,11 +122,8 @@ export const HeatmapExtension = Extension.create({
                       tr.before.textBetween(step.from, step.to, '\n'),
                     )
 
-                // Add an inline decoration spanning the inserted range.
-                // Decoration.inline() attaches a CSS class without wrapping the
-                // text in a new DOM element — it merges class attributes instead.
                 decorations = decorations.add(tr.doc, [
-                  Decoration.inline(step.from, step.from + insertedSize, {
+                  Decoration.inline(from, from + insertedSize, {
                     class: `heatmap-span ${spanClass}`,
                   }),
                 ])
@@ -144,23 +150,18 @@ export const HeatmapExtension = Extension.create({
 
 /**
  * Map an AI suggestion's edit_type to a heatmap CSS modifier class.
- * The edit_type values come from the backend's SUGGESTION_TOOL schema:
- *   "grammar_fix" | "wording_change" | "organizational_move"
  */
 function aiEditTypeClass(editType: string | undefined): string {
   switch (editType) {
     case 'grammar_fix':         return 'heatmap-span--ai-grammar-fix'
     case 'wording_change':      return 'heatmap-span--ai-wording-change'
     case 'organizational_move': return 'heatmap-span--ai-organizational-move'
-    default:                    return 'heatmap-span--ai-modified'  // fallback
+    default:                    return 'heatmap-span--ai-modified'
   }
 }
 
 /**
  * Classify a human edit and return the matching heatmap CSS modifier class.
- * Mirrors the classifier.ts rule so the heatmap color is applied immediately
- * (the backend's Claude-based classification updates the stored record later
- * but doesn't retroactively change in-session decorations).
  */
 function humanEditTypeClass(inserted: string, deleted: string): string {
   const editType = classifyHumanEdit(inserted, deleted)
@@ -169,5 +170,35 @@ function humanEditTypeClass(inserted: string, deleted: string): string {
     case 'human_wording_change':       return 'heatmap-span--human-wording-change'
     case 'human_organizational_move':  return 'heatmap-span--human-organizational-move'
     default:                           return 'heatmap-span--human'
+  }
+}
+
+// ── Public helpers for building decorations from backend spans ───────────────
+
+export interface HeatmapSpan {
+  text: string
+  origin: string
+  edit_type: string | null
+}
+
+/**
+ * Map an (origin, edit_type) pair from a backend span to the CSS class used
+ * by the heatmap decorations.
+ */
+export function spanCssClass(origin: string, editType: string | null): string {
+  if (origin === 'human') {
+    switch (editType) {
+      case 'human_grammar_fix':          return 'heatmap-span--human-grammar-fix'
+      case 'human_wording_change':       return 'heatmap-span--human-wording-change'
+      case 'human_organizational_move':  return 'heatmap-span--human-organizational-move'
+      default:                           return 'heatmap-span--human'
+    }
+  }
+  // AI origins
+  switch (editType) {
+    case 'grammar_fix':         return 'heatmap-span--ai-grammar-fix'
+    case 'wording_change':      return 'heatmap-span--ai-wording-change'
+    case 'organizational_move': return 'heatmap-span--ai-organizational-move'
+    default:                    return 'heatmap-span--ai-modified'
   }
 }

@@ -189,6 +189,45 @@ async function exportTimeline(data: TimelineResponse): Promise<void> {
   }
 }
 
+const LEGEND: { group: string; items: { label: string; color: string }[] }[] = [
+  {
+    group: 'Human',
+    items: [
+      { label: 'Grammar fix',   color: 'rgba(34, 211, 238, 0.55)' },
+      { label: 'Wording',       color: 'rgba(74, 222, 128, 0.55)' },
+      { label: 'Reorganized',   color: 'rgba(96, 165, 250, 0.60)' },
+      { label: 'Other edit',    color: 'rgba(251, 191, 36, 0.50)' },
+    ],
+  },
+  {
+    group: 'AI',
+    items: [
+      { label: 'Grammar fix',   color: 'rgba(253, 224, 71, 0.70)' },
+      { label: 'Wording',       color: 'rgba(251, 146, 60, 0.60)' },
+      { label: 'Reorganized',   color: 'rgba(167, 139, 250, 0.65)' },
+      { label: 'Generated',     color: 'rgba(251, 113, 133, 0.50)' },
+    ],
+  },
+]
+
+function ColorKey() {
+  return (
+    <div className="tl-legend">
+      {LEGEND.map((group) => (
+        <div key={group.group} className="tl-legend-group">
+          <span className="tl-legend-group-label">{group.group}</span>
+          {group.items.map((item) => (
+            <span key={item.label} className="tl-legend-item">
+              <span className="tl-legend-swatch" style={{ background: item.color }} />
+              {item.label}
+            </span>
+          ))}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export default function TimelineModal({ documentId, onClose }: Props) {
   const [loading, setLoading] = useState(true)
   const [data, setData] = useState<TimelineResponse | null>(null)
@@ -247,6 +286,8 @@ export default function TimelineModal({ documentId, onClose }: Props) {
         </div>
 
         {exportError && <p className="tl-export-error">{exportError}</p>}
+
+        <ColorKey />
 
         <div className="tl-body">
           {loading && <p className="tl-hint">Loading…</p>}
