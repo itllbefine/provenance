@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip3.12 install:*)",
+      "Bash(python3.12 -m venv .venv)",
+      "Bash(.venv/bin/pip install:*)",
+      "Bash(npm install:*)",
+      "Bash(npx tsc:*)",
+      "Bash(.venv/bin/python3.12 -c \"from routers.provenance import router; print\\(''OK''\\)\")"
+    ]
+  }
+}
