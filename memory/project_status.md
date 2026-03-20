@@ -66,16 +66,20 @@ Classifies human edits into `human_grammar_fix`, `human_wording_change`, or `hum
 ## Frontend components
 
 ### `App.tsx`
-Top-level state: current document, save status, suggestions list, dismissed suggestions, focused suggestion index, document context, model selector. Debounced save (1.5s content/title, 1s context). Dismissed suggestions reset on document switch. Wires `applyEdit` and `getSelection` refs to EditorPanel; passes `onAcceptChatEdit` to RationalePanel tagged `ai_collaborative`.
+Top-level state: current document, save status, suggestions list, dismissed suggestions, focused suggestion index, document context, model selector, `activeSelection` (persisted editor selection string or null). Debounced save (1.5s content/title, 1s context). Dismissed suggestions and `activeSelection` reset on document switch. Wires `applyEdit` ref and `onSelectionChange` to EditorPanel; passes `activeSelection` + `onClearSelection` to RationalePanel.
 
 ### `EditorPanel.tsx`
-TipTap editor with toolbar (Bold, Italic, H1–H3, lists, blockquote, Heat, Log, Score, Timeline, Context). Collapsible context panel (textarea). Registers `applyEdit` and `getSelection` callbacks via refs. Provenance events buffered in a ref and flushed to backend every 2s (and on unmount). `left-bottom` in App.css uses `overflow: hidden` so RationalePanel controls its own scroll.
+TipTap editor with toolbar (Bold, Italic, H1–H3, lists, blockquote, Heat, Log, Score, Timeline, Context). Collapsible context panel (textarea). Registers `applyEdit` callback via ref. Provenance events buffered in a ref and flushed to backend every 2s (and on unmount). `left-bottom` in App.css uses `overflow: hidden` so RationalePanel controls its own scroll.
+
+Accepts `onSelectionChange?: (text: string | null) => void` — fires with selected text when the user makes a non-empty selection while the editor is focused, or `null` when they place the cursor without selecting. Does NOT fire on blur, so the stored selection survives focus moving to the chat input. (Replaced the old `onRegisterGetSelection` callback pattern.)
 
 ### `SuggestionsPanel.tsx`
 Left top panel. Lists AI suggestions with diff view (diff-match-patch), Accept/Dismiss buttons, edit-type badges. Model selector (Sonnet/Opus). Generate button. Accept calls `applyEdit`; Dismiss adds `original_text` to the dismissed list.
 
 ### `RationalePanel.tsx`
-Left bottom panel. Shows focused suggestion's rationale. Multi-turn chat thread with `LocalMessage[]` state. If Claude proposes an edit via the `propose_edit` tool, shows inline `DiffView` and Accept button (tagged `ai_collaborative`). Context captured at send time (not reactively). Conversation resets when focused suggestion changes.
+Left bottom panel. Shows focused suggestion's rationale. Multi-turn chat thread with `LocalMessage[]` state. If Claude proposes an edit via the `propose_edit` tool, shows inline `DiffView` and Accept button (tagged `ai_collaborative`). Conversation resets when focused suggestion changes.
+
+Accepts `activeSelection: string | null` (persisted editor selection from App state) and `onClearSelection` instead of the old `getSelectedText` callback. When `activeSelection` is set and no suggestion is focused, shows a quoted preview bar above the chat input (with a ✕ to dismiss). Context priority on send: `suggestion.original_text ?? activeSelection ?? ''`. Selection is cleared after each send.
 
 ### `ProvenanceDebugPanel.tsx`
 Toggled by "Log" button. Shows raw provenance event log for the current document.
@@ -84,7 +88,7 @@ Toggled by "Log" button. Shows raw provenance event log for the current document
 Modal for you-ness score display (0–100, explanation, human/AI authorship %) + baseline sample management (upload, list, delete).
 
 ### `TimelineModal.tsx`
-Modal showing document timeline with snapshots and diffs. Has an **Export** button in the header that generates:
+Modal showing document timeline with snapshots and diffs. Has a **color key bar** (between header and body) with two groups — Human and AI — each listing the four edit-type swatches. Has an **Export** button in the header that generates:
 - 25%, 50%, 75% milestones → individual PNG files (`timeline-25pct.png`, etc.) with heatmap colors visible but text blurred (`filter: blur(4px)` on the body), showing authorship pattern without revealing content
 - 100% milestone → `timeline-100pct.pdf` with full readable text
 

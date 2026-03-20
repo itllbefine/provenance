@@ -137,6 +137,47 @@
   border-top: 1px solid #fecaca;
 }
 
+/* ── Selection preview ── */
+
+.chat-selection-preview {
+  flex-shrink: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 6px 10px;
+  background: #f5f2ee;
+  border-top: 1px solid #e0ddd8;
+  border-left: 3px solid #9b8c7a;
+}
+
+.chat-selection-quote {
+  flex: 1;
+  font-size: 11px;
+  font-family: Georgia, 'Times New Roman', serif;
+  line-height: 1.5;
+  color: #666;
+  font-style: italic;
+  word-break: break-word;
+}
+
+.chat-selection-clear {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 10px;
+  color: #aaa;
+  padding: 1px 3px;
+  border-radius: 3px;
+  line-height: 1;
+  margin-top: 1px;
+}
+
+.chat-selection-clear:hover {
+  background: #e8e4df;
+  color: #555;
+}
+
 /* ── Input area ── */
 
 .chat-input-area {

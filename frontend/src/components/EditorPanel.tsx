@@ -22,8 +22,10 @@ interface Props {
   // Called once on mount with a function that accepts an AI suggestion.
   // The function returns true if the original text was found and replaced.
   onRegisterApplyEdit?: (fn: (original: string, suggested: string, editType: string, origin?: string) => boolean) => void
-  // Called once on mount with a function that returns the currently selected text.
-  onRegisterGetSelection?: (fn: () => string) => void
+  // Called whenever the editor selection changes: non-empty text when the user
+  // selects something, null when the cursor is placed without a selection.
+  // Does NOT fire on blur — the stored selection persists when focus moves away.
+  onSelectionChange?: (text: string | null) => void
   getSuggestions: () => Suggestion[]
 }
 
@@ -53,7 +55,7 @@ export default function EditorPanel({
   onContextChange,
   saveStatus,
   onRegisterApplyEdit,
-  onRegisterGetSelection,
+  onSelectionChange,
   getSuggestions,
 }: Props) {
   const [title, setTitle] = useState(initialTitle)
@@ -89,6 +91,12 @@ export default function EditorPanel({
   // without needing to be reconfigured.
   const getSuggestionsRef = useRef(getSuggestions)
   getSuggestionsRef.current = getSuggestions
+
+  // Track whether the editor currently has focus so onSelectionUpdate can
+  // distinguish "user actively changed selection" from "blur collapsed it".
+  const editorFocusedRef = useRef(false)
+  const onSelectionChangeRef = useRef(onSelectionChange)
+  onSelectionChangeRef.current = onSelectionChange
 
   // Flush the pending event buffer to the backend.
   async function flushEvents() {
@@ -139,6 +147,28 @@ export default function EditorPanel({
     editorProps: {
       attributes: { spellcheck: 'true' },
     },
+    onFocus() {
+      editorFocusedRef.current = true
+    },
+    onBlur() {
+      // Mark as unfocused. ProseMirror does not dispatch a selection transaction
+      // on blur, so onSelectionUpdate will not fire — the stored selection in
+      // App state persists when focus moves to the chat input.
+      editorFocusedRef.current = false
+    },
+    onSelectionUpdate({ editor }) {
+      // Only act when the editor has focus so we don't respond to programmatic
+      // selection changes (e.g. applyEdit moving the cursor).
+      if (!editorFocusedRef.current) return
+      const { from, to } = editor.state.selection
+      if (from === to) {
+        // Cursor placed with no selection — clear any stored selection.
+        onSelectionChangeRef.current?.(null)
+      } else {
+        const text = editor.state.doc.textBetween(from, to, ' ')
+        onSelectionChangeRef.current?.(text || null)
+      }
+    },
     onUpdate({ editor }) {
       onChangeRef.current(titleRef.current, JSON.stringify(editor.getJSON()))
     },
@@ -147,13 +177,6 @@ export default function EditorPanel({
   // Register editor callbacks with the parent once the editor is ready.
   useEffect(() => {
     if (!editor) return
-
-    if (onRegisterGetSelection) {
-      onRegisterGetSelection(() => {
-        const { from, to } = editor.state.selection
-        return editor.state.doc.textBetween(from, to, ' ')
-      })
-    }
 
     if (!onRegisterApplyEdit) return
 
@@ -208,7 +231,7 @@ export default function EditorPanel({
     }
 
     onRegisterApplyEdit(applyEdit)
-  }, [editor, onRegisterApplyEdit, onRegisterGetSelection])
+  }, [editor, onRegisterApplyEdit])
 
   function handleTitleChange(e: React.ChangeEvent<HTMLInputElement>) {
     const newTitle = e.target.value

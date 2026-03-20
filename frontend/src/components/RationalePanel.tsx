@@ -15,7 +15,10 @@ interface Props {
   suggestion: Suggestion | null
   documentId: string
   suggestionModel: 'claude-sonnet-4-6' | 'claude-opus-4-6'
-  getSelectedText: () => string
+  /** Text the user has selected in the editor — persists after focus leaves. */
+  activeSelection: string | null
+  /** Call to dismiss the stored selection (e.g. user clicks the ✕ on the preview). */
+  onClearSelection: () => void
   onAcceptChatEdit: (original: string, suggested: string, editType: string) => void
 }
 
@@ -39,7 +42,8 @@ export default function RationalePanel({
   suggestion,
   documentId,
   suggestionModel,
-  getSelectedText,
+  activeSelection,
+  onClearSelection,
   onAcceptChatEdit,
 }: Props) {
   const [messages, setMessages] = useState<LocalMessage[]>([])
@@ -67,13 +71,16 @@ export default function RationalePanel({
     const text = input.trim()
     if (!text || isLoading) return
 
-    // Capture context at send time: focused suggestion text or editor selection
-    const contextText = suggestion?.original_text ?? getSelectedText()
+    // Context priority: focused suggestion > persisted editor selection
+    const contextText = suggestion?.original_text ?? activeSelection ?? ''
 
     const userMessage: LocalMessage = { role: 'user', content: text }
     const nextMessages = [...messages, userMessage]
     setMessages(nextMessages)
     setInput('')
+    // Clear the selection preview once the user has sent — it has been consumed
+    // as context and a new selection will be needed for the next question.
+    onClearSelection()
     setIsLoading(true)
     setError(null)
 
@@ -160,6 +167,24 @@ export default function RationalePanel({
 
         {error && <div className="chat-error">{error}</div>}
       </div>
+
+      {activeSelection && !suggestion && (
+        <div className="chat-selection-preview">
+          <span className="chat-selection-quote">
+            {activeSelection.length > 120
+              ? activeSelection.slice(0, 120).trimEnd() + '…'
+              : activeSelection}
+          </span>
+          <button
+            className="chat-selection-clear"
+            onClick={onClearSelection}
+            title="Clear selection"
+            aria-label="Clear selection"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       <div className="chat-input-area">
         <textarea

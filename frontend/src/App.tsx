@@ -26,7 +26,10 @@ export default function App() {
   // EditorPanel registers its applyEdit function here so App can call it
   // when the user accepts a suggestion.
   const applyEditRef = useRef<((original: string, suggested: string, editType: string, origin?: string) => boolean) | null>(null)
-  const getSelectionRef = useRef<(() => string) | null>(null)
+
+  // Persisted editor selection — survives focus moving to the chat input.
+  // Set by EditorPanel's onSelectionChange; cleared on send or doc switch.
+  const [activeSelection, setActiveSelection] = useState<string | null>(null)
 
   // On first render, load the most recent document or create a new one
   useEffect(() => {
@@ -80,6 +83,7 @@ export default function App() {
     setSuggestions([])
     setFocusedIndex(null)
     setGenerateError(null)
+    setActiveSelection(null)
   }, [docId])
 
   // Debounced context save — separate from the title/content save so they
@@ -182,7 +186,8 @@ export default function App() {
             suggestion={focusedIndex !== null ? suggestions[focusedIndex] ?? null : null}
             documentId={doc.id}
             suggestionModel={suggestionModel}
-            getSelectedText={() => getSelectionRef.current?.() ?? ''}
+            activeSelection={activeSelection}
+            onClearSelection={() => setActiveSelection(null)}
             onAcceptChatEdit={(original, suggested, editType) => {
               const applied = applyEditRef.current?.(original, suggested, editType, 'ai_collaborative')
               if (!applied) {
@@ -205,7 +210,7 @@ export default function App() {
           onContextChange={handleContextChange}
           saveStatus={saveStatus}
           onRegisterApplyEdit={(fn) => { applyEditRef.current = fn }}
-          onRegisterGetSelection={(fn) => { getSelectionRef.current = fn }}
+          onSelectionChange={setActiveSelection}
           getSuggestions={() => suggestions}
         />
       </div>
