@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { RawProvenanceEvent } from '../api'
 import { flushProvenanceEvents } from '../api'
 import { ProvenanceExtension } from '../provenance/ProvenanceExtension'
+import { HeatmapExtension, heatmapKey } from '../provenance/HeatmapExtension'
 import type { SaveStatus } from '../App'
 import ProvenanceDebugPanel from './ProvenanceDebugPanel'
 import './EditorPanel.css'
@@ -107,6 +108,7 @@ export default function EditorPanel({
         heading: { levels: [1, 2, 3] },
       }),
       provenanceExtension,
+      HeatmapExtension,
     ],
     content: parseContent(initialContent),
     onUpdate({ editor }) {
@@ -191,6 +193,14 @@ export default function EditorPanel({
         </button>
 
         <div className="toolbar-divider" />
+
+        <button
+          onClick={() => editor.chain().focus().toggleHeatmap().run()}
+          className={heatmapKey.getState(editor.state)?.enabled ? 'active' : ''}
+          title="Toggle heatmap view"
+        >
+          Heat
+        </button>
 
         <button
           onClick={() => setShowDebug((v) => !v)}

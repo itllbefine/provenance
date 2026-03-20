@@ -132,3 +132,19 @@
 }
 
 .editor-content .tiptap strong { font-weight: 700; }
+
+/* ── Heatmap decorations ── */
+
+/* Base span: smooth transition so toggling heatmap fades in/out */
+.heatmap-span {
+  transition: background-color 0.2s ease;
+  border-radius: 2px;
+}
+
+/* Phase 3: human-written text (typed this session).
+   Warm amber tint — visible but not distracting while writing.
+   The color and class name are designed to extend easily:
+   Phase 5 will add heatmap-span--human-grammar, --human-wording, etc. */
+.heatmap-span--human {
+  background-color: rgba(251, 191, 36, 0.25); /* amber-300 at 25% opacity */
+}
