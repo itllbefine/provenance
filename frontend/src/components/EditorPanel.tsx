@@ -21,7 +21,9 @@ interface Props {
   saveStatus: SaveStatus
   // Called once on mount with a function that accepts an AI suggestion.
   // The function returns true if the original text was found and replaced.
-  onRegisterApplyEdit?: (fn: (original: string, suggested: string, editType: string) => boolean) => void
+  onRegisterApplyEdit?: (fn: (original: string, suggested: string, editType: string, origin?: string) => boolean) => void
+  // Called once on mount with a function that returns the currently selected text.
+  onRegisterGetSelection?: (fn: () => string) => void
   getSuggestions: () => Suggestion[]
 }
 
@@ -51,6 +53,7 @@ export default function EditorPanel({
   onContextChange,
   saveStatus,
   onRegisterApplyEdit,
+  onRegisterGetSelection,
   getSuggestions,
 }: Props) {
   const [title, setTitle] = useState(initialTitle)
@@ -141,16 +144,24 @@ export default function EditorPanel({
     },
   })
 
-  // Register the applyEdit function with the parent once the editor is ready.
-  // We use useEffect so it runs after the editor is mounted (editor is non-null).
+  // Register editor callbacks with the parent once the editor is ready.
   useEffect(() => {
-    if (!editor || !onRegisterApplyEdit) return
+    if (!editor) return
+
+    if (onRegisterGetSelection) {
+      onRegisterGetSelection(() => {
+        const { from, to } = editor.state.selection
+        return editor.state.doc.textBetween(from, to, ' ')
+      })
+    }
+
+    if (!onRegisterApplyEdit) return
 
     // Finds `originalText` in the document by walking all text nodes and
     // building a flat character→position map. Then dispatches a replacement
     // transaction tagged with 'ai_suggestion' meta so ProvenanceExtension and
     // HeatmapExtension can record the correct authorship.
-    function applyEdit(originalText: string, suggestedText: string, editType: string): boolean {
+    function applyEdit(originalText: string, suggestedText: string, editType: string, origin = 'ai_modified'): boolean {
       const { state } = editor!
       const { doc, schema } = state
 
@@ -188,7 +199,7 @@ export default function EditorPanel({
       }
       tr.setMeta('ai_suggestion', {
         edit_type: editType,
-        origin: 'ai_modified',
+        origin,
         author: 'claude-sonnet-4-6',
       })
 
@@ -197,7 +208,7 @@ export default function EditorPanel({
     }
 
     onRegisterApplyEdit(applyEdit)
-  }, [editor, onRegisterApplyEdit])
+  }, [editor, onRegisterApplyEdit, onRegisterGetSelection])
 
   function handleTitleChange(e: React.ChangeEvent<HTMLInputElement>) {
     const newTitle = e.target.value

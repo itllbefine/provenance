@@ -25,7 +25,8 @@ export default function App() {
 
   // EditorPanel registers its applyEdit function here so App can call it
   // when the user accepts a suggestion.
-  const applyEditRef = useRef<((original: string, suggested: string, editType: string) => boolean) | null>(null)
+  const applyEditRef = useRef<((original: string, suggested: string, editType: string, origin?: string) => boolean) | null>(null)
+  const getSelectionRef = useRef<(() => string) | null>(null)
 
   // On first render, load the most recent document or create a new one
   useEffect(() => {
@@ -179,6 +180,18 @@ export default function App() {
         <div className="left-bottom">
           <RationalePanel
             suggestion={focusedIndex !== null ? suggestions[focusedIndex] ?? null : null}
+            documentId={doc.id}
+            suggestionModel={suggestionModel}
+            getSelectedText={() => getSelectionRef.current?.() ?? ''}
+            onAcceptChatEdit={(original, suggested, editType) => {
+              const applied = applyEditRef.current?.(original, suggested, editType, 'ai_collaborative')
+              if (!applied) {
+                setGenerateError(
+                  `Could not find "${original.slice(0, 40)}…" in the document. ` +
+                  'The document may have changed.',
+                )
+              }
+            }}
           />
         </div>
       </div>
@@ -192,6 +205,7 @@ export default function App() {
           onContextChange={handleContextChange}
           saveStatus={saveStatus}
           onRegisterApplyEdit={(fn) => { applyEditRef.current = fn }}
+          onRegisterGetSelection={(fn) => { getSelectionRef.current = fn }}
           getSuggestions={() => suggestions}
         />
       </div>

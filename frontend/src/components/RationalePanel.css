@@ -1,5 +1,23 @@
+/* ── Panel layout ── */
+
+.rationale-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.rationale-scroll {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+/* ── Suggestion rationale ── */
+
 .rationale-body {
-  padding: 14px 16px;
+  padding: 12px 16px;
+  border-bottom: 1px solid #e8e5e0;
 }
 
 .rationale-text {
@@ -7,4 +25,171 @@
   line-height: 1.65;
   color: #444;
   margin: 0;
+}
+
+/* ── Chat thread ── */
+
+.chat-thread {
+  padding: 8px 0;
+}
+
+.chat-message {
+  padding: 4px 12px;
+  display: flex;
+}
+
+.chat-message--user {
+  justify-content: flex-end;
+}
+
+.chat-message--assistant {
+  justify-content: flex-start;
+}
+
+.chat-bubble {
+  max-width: 90%;
+  padding: 7px 10px;
+  border-radius: 10px;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.chat-message--user .chat-bubble {
+  background: #9b8c7a;
+  color: #fff;
+  border-bottom-right-radius: 3px;
+}
+
+.chat-message--assistant .chat-bubble {
+  background: #eee9e1;
+  color: #2a2a28;
+  border-bottom-left-radius: 3px;
+}
+
+.chat-bubble--loading {
+  background: #eee9e1;
+  color: #aaa;
+  font-style: italic;
+}
+
+.chat-text {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+/* ── Chat edit proposal (diff + accept button) ── */
+
+.chat-edit-proposal {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.chat-diff {
+  display: block;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #2a2a28;
+  word-break: break-word;
+  margin-bottom: 6px;
+}
+
+.diff-del {
+  text-decoration: line-through;
+  color: #c0392b;
+  background: rgba(220, 38, 38, 0.08);
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+.diff-ins {
+  text-decoration: none;
+  color: #15803d;
+  background: rgba(21, 128, 61, 0.1);
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+.chat-accept-btn {
+  padding: 2px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 4px;
+  border: none;
+  background: #15803d;
+  color: #fff;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.chat-accept-btn:hover {
+  background: #166534;
+}
+
+/* ── Error ── */
+
+.chat-error {
+  padding: 8px 16px;
+  font-size: 12px;
+  color: #c0392b;
+  background: #fef2f2;
+  border-top: 1px solid #fecaca;
+}
+
+/* ── Input area ── */
+
+.chat-input-area {
+  flex-shrink: 0;
+  display: flex;
+  gap: 6px;
+  padding: 8px 10px;
+  border-top: 1px solid #e0ddd8;
+  background: #f0ede8;
+  align-items: flex-end;
+}
+
+.chat-input {
+  flex: 1;
+  resize: none;
+  border: 1px solid #d0ccc5;
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 12px;
+  font-family: inherit;
+  line-height: 1.5;
+  background: #fff;
+  color: #2a2a28;
+  outline: none;
+  transition: border-color 0.1s;
+}
+
+.chat-input:focus {
+  border-color: #9b8c7a;
+}
+
+.chat-input:disabled {
+  opacity: 0.6;
+}
+
+.chat-send-btn {
+  padding: 6px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid #d0ccc5;
+  border-radius: 6px;
+  background: #fff;
+  color: #444;
+  cursor: pointer;
+  transition: background 0.1s;
+  white-space: nowrap;
+}
+
+.chat-send-btn:hover:not(:disabled) {
+  background: #eee9e1;
+}
+
+.chat-send-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
 }

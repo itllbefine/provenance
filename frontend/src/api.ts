@@ -46,7 +46,7 @@ export interface RawProvenanceEvent {
   deleted_text: string
   author: string
   timestamp: string
-  origin: 'human' | 'ai_generated' | 'ai_modified' | 'ai_influenced'
+  origin: 'human' | 'ai_generated' | 'ai_modified' | 'ai_influenced' | 'ai_collaborative'
   edit_type: string | null
 }
 
@@ -164,6 +164,48 @@ export async function getTimeline(docId: string): Promise<TimelineResponse> {
     throw new Error(body.detail ?? `Failed to load timeline: ${res.statusText}`)
   }
   return res.json() as Promise<TimelineResponse>
+}
+
+// ── Chat ─────────────────────────────────────────────────────────────────────
+
+export interface ChatMessage {
+  role: 'user' | 'assistant'
+  content: string
+}
+
+export interface SuggestedEdit {
+  original_text: string
+  suggested_text: string
+  edit_type: 'grammar_fix' | 'wording_change' | 'organizational_move'
+  rationale: string
+}
+
+export interface ChatResponse {
+  message: string
+  suggested_edit: SuggestedEdit | null
+}
+
+export async function chatWithContext(
+  documentId: string,
+  contextText: string,
+  messages: ChatMessage[],
+  model = 'claude-sonnet-4-6',
+): Promise<ChatResponse> {
+  const res = await fetch(`${BASE}/suggestions/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      document_id: documentId,
+      context_text: contextText,
+      messages,
+      model,
+    }),
+  })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({})) as { detail?: string }
+    throw new Error(body.detail ?? `Request failed: ${res.statusText}`)
+  }
+  return res.json() as Promise<ChatResponse>
 }
 
 export async function saveDocument(

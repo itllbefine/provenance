@@ -115,3 +115,29 @@ class SuggestionResponse(BaseModel):
     suggested_text: str
     rationale: str
     edit_type: str  # 'grammar_fix' | 'wording_change' | 'organizational_move'
+
+
+# --- Chat ---
+
+class ChatMessage(BaseModel):
+    role: str  # 'user' | 'assistant'
+    content: str
+
+
+class SuggestedEdit(BaseModel):
+    original_text: str
+    suggested_text: str
+    edit_type: str  # 'grammar_fix' | 'wording_change' | 'organizational_move'
+    rationale: str
+
+
+class ChatRequest(BaseModel):
+    document_id: str
+    context_text: str = ""   # selected text or focused suggestion text
+    messages: list[ChatMessage] = []
+    model: str = "claude-sonnet-4-6"
+
+
+class ChatResponse(BaseModel):
+    message: str
+    suggested_edit: Optional[SuggestedEdit] = None

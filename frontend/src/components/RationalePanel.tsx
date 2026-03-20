@@ -1,24 +1,188 @@
-import type { Suggestion } from '../api'
+import DiffMatchPatch from 'diff-match-patch'
+import { useEffect, useRef, useState } from 'react'
+import type { ChatMessage, SuggestedEdit, Suggestion } from '../api'
+import { chatWithContext } from '../api'
 import './SidePanel.css'
 import './RationalePanel.css'
 
-interface Props {
-  suggestion: Suggestion | null
+interface LocalMessage {
+  role: 'user' | 'assistant'
+  content: string
+  suggestedEdit?: SuggestedEdit
 }
 
-export default function RationalePanel({ suggestion }: Props) {
+interface Props {
+  suggestion: Suggestion | null
+  documentId: string
+  suggestionModel: 'claude-sonnet-4-6' | 'claude-opus-4-6'
+  getSelectedText: () => string
+  onAcceptChatEdit: (original: string, suggested: string, editType: string) => void
+}
+
+const dmp = new DiffMatchPatch()
+
+function DiffView({ original, suggested }: { original: string; suggested: string }) {
+  const diffs = dmp.diff_main(original, suggested)
+  dmp.diff_cleanupSemantic(diffs)
   return (
-    <div className="side-panel">
+    <span className="chat-diff">
+      {diffs.map(([op, text], i) => {
+        if (op === 1) return <ins key={i} className="diff-ins">{text}</ins>
+        if (op === -1) return <del key={i} className="diff-del">{text}</del>
+        return <span key={i}>{text}</span>
+      })}
+    </span>
+  )
+}
+
+export default function RationalePanel({
+  suggestion,
+  documentId,
+  suggestionModel,
+  getSelectedText,
+  onAcceptChatEdit,
+}: Props) {
+  const [messages, setMessages] = useState<LocalMessage[]>([])
+  const [input, setInput] = useState('')
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const threadRef = useRef<HTMLDivElement>(null)
+
+  // Reset conversation when the focused suggestion changes
+  const suggestionId = suggestion?.id ?? null
+  useEffect(() => {
+    setMessages([])
+    setInput('')
+    setError(null)
+  }, [suggestionId])
+
+  // Scroll to bottom when new messages arrive
+  useEffect(() => {
+    if (threadRef.current) {
+      threadRef.current.scrollTop = threadRef.current.scrollHeight
+    }
+  }, [messages])
+
+  async function handleSend() {
+    const text = input.trim()
+    if (!text || isLoading) return
+
+    // Capture context at send time: focused suggestion text or editor selection
+    const contextText = suggestion?.original_text ?? getSelectedText()
+
+    const userMessage: LocalMessage = { role: 'user', content: text }
+    const nextMessages = [...messages, userMessage]
+    setMessages(nextMessages)
+    setInput('')
+    setIsLoading(true)
+    setError(null)
+
+    try {
+      // Only send role+content to the API
+      const apiMessages: ChatMessage[] = nextMessages.map(({ role, content }) => ({ role, content }))
+      const res = await chatWithContext(documentId, contextText, apiMessages, suggestionModel)
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: 'assistant',
+          content: res.message,
+          suggestedEdit: res.suggested_edit ?? undefined,
+        },
+      ])
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to get response')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      void handleSend()
+    }
+  }
+
+  return (
+    <div className="side-panel rationale-panel">
       <div className="panel-header">Rationale</div>
-      {suggestion ? (
-        <div className="rationale-body">
-          <p className="rationale-text">{suggestion.rationale}</p>
-        </div>
-      ) : (
-        <div className="panel-placeholder">
-          Click a suggestion to see the reasoning behind it.
-        </div>
-      )}
+
+      <div className="rationale-scroll" ref={threadRef}>
+        {suggestion && (
+          <div className="rationale-body">
+            <p className="rationale-text">{suggestion.rationale}</p>
+          </div>
+        )}
+
+        {messages.length === 0 && !suggestion && (
+          <div className="panel-placeholder">
+            Select text or click a suggestion, then ask a question below.
+          </div>
+        )}
+
+        {messages.length > 0 && (
+          <div className="chat-thread">
+            {messages.map((msg, i) => (
+              <div key={i} className={`chat-message chat-message--${msg.role}`}>
+                <div className="chat-bubble">
+                  <p className="chat-text">{msg.content}</p>
+                  {msg.suggestedEdit && (
+                    <div className="chat-edit-proposal">
+                      <DiffView
+                        original={msg.suggestedEdit.original_text}
+                        suggested={msg.suggestedEdit.suggested_text}
+                      />
+                      <button
+                        className="chat-accept-btn"
+                        onClick={() =>
+                          onAcceptChatEdit(
+                            msg.suggestedEdit!.original_text,
+                            msg.suggestedEdit!.suggested_text,
+                            msg.suggestedEdit!.edit_type,
+                          )
+                        }
+                      >
+                        Accept
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+            {isLoading && (
+              <div className="chat-message chat-message--assistant">
+                <div className="chat-bubble chat-bubble--loading">Thinking…</div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {error && <div className="chat-error">{error}</div>}
+      </div>
+
+      <div className="chat-input-area">
+        <textarea
+          className="chat-input"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder={
+            suggestion
+              ? 'Ask about this suggestion…'
+              : 'Ask about selected text…'
+          }
+          rows={2}
+          disabled={isLoading}
+        />
+        <button
+          className="chat-send-btn"
+          onClick={() => void handleSend()}
+          disabled={!input.trim() || isLoading}
+        >
+          Send
+        </button>
+      </div>
     </div>
   )
 }

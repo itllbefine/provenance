@@ -21,7 +21,8 @@
 
 .left-bottom {
   flex: 2;
-  overflow-y: auto;
+  overflow: hidden;
+  min-height: 0;
 }
 
 .right-panel {
