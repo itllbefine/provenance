@@ -69,3 +69,17 @@ async def init_db() -> None:
         """)
 
         await db.commit()
+
+    # Add origin/edit_type columns to provenance_events if they don't exist yet.
+    # ALTER TABLE ADD COLUMN is idempotent on older SQLite; we catch the error if
+    # the column already exists (SQLite raises OperationalError in that case).
+    for column_def in [
+        "ALTER TABLE provenance_events ADD COLUMN origin TEXT NOT NULL DEFAULT 'human'",
+        "ALTER TABLE provenance_events ADD COLUMN edit_type TEXT",
+    ]:
+        try:
+            async with aiosqlite.connect(DB_PATH) as _db:
+                await _db.execute(column_def)
+                await _db.commit()
+        except Exception:
+            pass  # Column already exists

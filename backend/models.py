@@ -25,13 +25,15 @@ class DocumentResponse(BaseModel):
 # --- Provenance events ---
 
 class ProvenanceEventCreate(BaseModel):
-    event_type: str   # 'insert', 'delete', or 'replace'
+    event_type: str          # 'insert', 'delete', or 'replace'
     from_pos: int
     to_pos: int
     inserted_text: str = ""
     deleted_text: str = ""
     author: str
-    timestamp: str    # ISO 8601
+    timestamp: str           # ISO 8601
+    origin: str = "human"   # 'human' | 'ai_generated' | 'ai_modified'
+    edit_type: Optional[str] = None  # 'grammar_fix' | 'wording_change' | 'organizational_move' | None
 
 
 class ProvenanceBatchCreate(BaseModel):
@@ -50,3 +52,19 @@ class ProvenanceEventResponse(BaseModel):
     deleted_text: str
     author: str
     timestamp: str
+    origin: str = "human"
+    edit_type: Optional[str] = None
+
+
+# --- AI suggestions ---
+
+class SuggestionRequest(BaseModel):
+    document_id: str
+
+
+class SuggestionResponse(BaseModel):
+    id: str
+    original_text: str
+    suggested_text: str
+    rationale: str
+    edit_type: str  # 'grammar_fix' | 'wording_change' | 'organizational_move'

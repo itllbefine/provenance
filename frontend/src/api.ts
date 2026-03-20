@@ -45,6 +45,16 @@ export interface RawProvenanceEvent {
   deleted_text: string
   author: string
   timestamp: string
+  origin: 'human' | 'ai_generated' | 'ai_modified'
+  edit_type: string | null
+}
+
+export interface Suggestion {
+  id: string
+  original_text: string
+  suggested_text: string
+  rationale: string
+  edit_type: 'grammar_fix' | 'wording_change' | 'organizational_move'
 }
 
 export async function flushProvenanceEvents(
@@ -64,6 +74,19 @@ export async function getProvenanceEvents(docId: string): Promise<ProvenanceEven
   const res = await fetch(`${BASE}/provenance/events/${docId}`)
   if (!res.ok) throw new Error(`Failed to load provenance events: ${res.statusText}`)
   return res.json() as Promise<ProvenanceEvent[]>
+}
+
+export async function generateSuggestions(documentId: string): Promise<Suggestion[]> {
+  const res = await fetch(`${BASE}/suggestions/generate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ document_id: documentId }),
+  })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({})) as { detail?: string }
+    throw new Error(body.detail ?? `Request failed: ${res.statusText}`)
+  }
+  return res.json() as Promise<Suggestion[]>
 }
 
 export async function saveDocument(

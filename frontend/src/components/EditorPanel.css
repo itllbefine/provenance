@@ -148,3 +148,8 @@
 .heatmap-span--human {
   background-color: rgba(251, 191, 36, 0.25); /* amber-300 at 25% opacity */
 }
+
+/* Phase 4: text inserted by accepting an AI suggestion. Rose tint. */
+.heatmap-span--ai-modified {
+  background-color: rgba(251, 113, 133, 0.25); /* rose-400 at 25% opacity */
+}

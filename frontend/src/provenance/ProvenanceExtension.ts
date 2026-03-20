@@ -9,6 +9,15 @@ interface ProvenanceOptions {
   onEvent: (event: RawProvenanceEvent) => void
 }
 
+// Shape of the meta value set on transactions that apply an AI suggestion.
+// EditorPanel sets this when dispatching an accepted suggestion so we can
+// tag the provenance event with the correct origin.
+interface AiSuggestionMeta {
+  edit_type: string
+  origin: 'ai_generated' | 'ai_modified'
+  author: string
+}
+
 /**
  * A TipTap extension that watches every ProseMirror transaction and emits
  * provenance events for text insertions, deletions, and replacements.
@@ -22,6 +31,8 @@ interface ProvenanceOptions {
  *     deletedText — what was in [from, to] before the step
  *     insertedText — what the step put in its place
  *   and classify the event as 'insert', 'delete', or 'replace'.
+ * - If the transaction carries an 'ai_suggestion' meta value, we use the
+ *   author/origin/edit_type from that meta instead of the human defaults.
  */
 export const ProvenanceExtension = Extension.create<ProvenanceOptions>({
   name: 'provenance',
@@ -44,6 +55,12 @@ export const ProvenanceExtension = Extension.create<ProvenanceOptions>({
     if (transaction.getMeta('addToHistory') === false) return
 
     const now = new Date().toISOString()
+
+    // Check whether this transaction was dispatched by accepting an AI suggestion.
+    const aiMeta = transaction.getMeta('ai_suggestion') as AiSuggestionMeta | undefined
+    const author = aiMeta?.author ?? 'local_user'
+    const origin: RawProvenanceEvent['origin'] = aiMeta?.origin ?? 'human'
+    const edit_type = aiMeta?.edit_type ?? null
 
     for (const step of transaction.steps) {
       // ReplaceStep is the ProseMirror step type for all text-level changes.
@@ -86,8 +103,10 @@ export const ProvenanceExtension = Extension.create<ProvenanceOptions>({
         to_pos: to,
         inserted_text: insertedText,
         deleted_text: deletedText,
-        author: 'local_user',
+        author,
         timestamp: now,
+        origin,
+        edit_type,
       })
     }
   },

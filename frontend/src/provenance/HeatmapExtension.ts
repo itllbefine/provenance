@@ -88,6 +88,13 @@ export const HeatmapExtension = Extension.create({
             let decorations = prev.decorations.map(tr.mapping, tr.doc)
 
             if (tr.docChanged) {
+              // Check whether this transaction came from accepting an AI suggestion
+              // so we can apply a different CSS class to AI-inserted text.
+              const aiMeta = tr.getMeta('ai_suggestion') as { edit_type?: string } | undefined
+              const spanClass = aiMeta
+                ? 'heatmap-span heatmap-span--ai-modified'
+                : 'heatmap-span heatmap-span--human'
+
               for (const step of tr.steps) {
                 // Only ReplaceStep involves actual text content changes.
                 if (!(step instanceof ReplaceStep)) continue
@@ -102,7 +109,7 @@ export const HeatmapExtension = Extension.create({
                 // text in a new DOM element — it merges class attributes instead.
                 decorations = decorations.add(tr.doc, [
                   Decoration.inline(step.from, step.from + insertedSize, {
-                    class: 'heatmap-span heatmap-span--human',
+                    class: spanClass,
                   }),
                 ])
               }

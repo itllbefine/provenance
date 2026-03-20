@@ -15,6 +15,9 @@ interface Props {
   initialContent: string
   onChange: (title: string, content: string) => void
   saveStatus: SaveStatus
+  // Called once on mount with a function that accepts an AI suggestion.
+  // The function returns true if the original text was found and replaced.
+  onRegisterApplyEdit?: (fn: (original: string, suggested: string, editType: string) => boolean) => void
 }
 
 const SAVE_LABEL: Record<SaveStatus, string> = {
@@ -40,6 +43,7 @@ export default function EditorPanel({
   initialContent,
   onChange,
   saveStatus,
+  onRegisterApplyEdit,
 }: Props) {
   const [title, setTitle] = useState(initialTitle)
   const [showDebug, setShowDebug] = useState(false)
@@ -115,6 +119,64 @@ export default function EditorPanel({
       onChangeRef.current(titleRef.current, JSON.stringify(editor.getJSON()))
     },
   })
+
+  // Register the applyEdit function with the parent once the editor is ready.
+  // We use useEffect so it runs after the editor is mounted (editor is non-null).
+  useEffect(() => {
+    if (!editor || !onRegisterApplyEdit) return
+
+    // Finds `originalText` in the document by walking all text nodes and
+    // building a flat character→position map. Then dispatches a replacement
+    // transaction tagged with 'ai_suggestion' meta so ProvenanceExtension and
+    // HeatmapExtension can record the correct authorship.
+    function applyEdit(originalText: string, suggestedText: string, editType: string): boolean {
+      const { state } = editor!
+      const { doc, schema } = state
+
+      // Build a flat array: for each character in text nodes, record its
+      // absolute ProseMirror position. This lets us map a string-index match
+      // back to document positions even across adjacent text nodes.
+      const posMap: number[] = []
+      let combined = ''
+      doc.descendants((node, pos) => {
+        if (node.isText && node.text) {
+          for (let i = 0; i < node.text.length; i++) {
+            posMap.push(pos + i)
+            combined += node.text[i]
+          }
+        }
+      })
+
+      const idx = combined.indexOf(originalText)
+      if (idx === -1) return false
+
+      const from = posMap[idx]
+      const to = posMap[idx + originalText.length - 1] + 1
+
+      // Preserve marks at the insertion point (e.g. bold, italic).
+      const marks = doc.resolve(from).marks()
+      const newContent = suggestedText
+        ? schema.text(suggestedText, marks)
+        : null
+
+      const tr = state.tr
+      if (newContent) {
+        tr.replaceWith(from, to, newContent)
+      } else {
+        tr.delete(from, to)
+      }
+      tr.setMeta('ai_suggestion', {
+        edit_type: editType,
+        origin: 'ai_modified',
+        author: 'claude-sonnet-4-6',
+      })
+
+      editor!.view.dispatch(tr)
+      return true
+    }
+
+    onRegisterApplyEdit(applyEdit)
+  }, [editor, onRegisterApplyEdit])
 
   function handleTitleChange(e: React.ChangeEvent<HTMLInputElement>) {
     const newTitle = e.target.value
