@@ -76,10 +76,13 @@ export const HeatmapExtension = Extension.create({
             const meta = tr.getMeta(heatmapKey) as { toggle?: boolean } | undefined
             const enabled = meta?.toggle ? !prev.enabled : prev.enabled
 
-            // Content-initialization transactions (setContent, document switch)
-            // carry addToHistory: false. Reset decorations so we don't carry
-            // stale highlights across documents.
-            if (tr.getMeta('addToHistory') === false) {
+            // TipTap's setContent command (used for document switches) sets
+            // 'preventUpdate' meta. Reset decorations so we don't carry stale
+            // highlights from one document into the next.
+            // NOTE: We do NOT check addToHistory === false here because TipTap's
+            // own focus/blur plugin dispatches transactions with addToHistory:false,
+            // and those would incorrectly wipe all decorations on every focus event.
+            if (tr.getMeta('preventUpdate')) {
               return { enabled, decorations: DecorationSet.empty }
             }
 

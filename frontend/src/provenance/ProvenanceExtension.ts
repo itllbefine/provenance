@@ -69,10 +69,13 @@ export const ProvenanceExtension = Extension.create<ProvenanceOptions>({
     // Ignore transactions that didn't change the document text/structure
     if (!transaction.docChanged) return
 
-    // Skip initialization transactions. When TipTap loads or switches content
-    // via editor.commands.setContent(), it sends a transaction with
-    // addToHistory: false. We don't want to log that as a user edit.
-    if (transaction.getMeta('addToHistory') === false) return
+    // Skip initialization transactions. When TipTap switches content via
+    // editor.commands.setContent(), it sets 'preventUpdate' meta. We don't
+    // want to log that wholesale replacement as a series of user edits.
+    // NOTE: addToHistory:false is NOT used here because TipTap's focus/blur
+    // plugin uses that flag too, and those transactions have docChanged:false
+    // anyway — but being explicit prevents future confusion.
+    if (transaction.getMeta('preventUpdate')) return
 
     const now = new Date().toISOString()
 
