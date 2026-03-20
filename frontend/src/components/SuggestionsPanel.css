@@ -6,6 +6,38 @@
   justify-content: space-between;
 }
 
+.model-toggle {
+  display: flex;
+  border: 1px solid #d0ccc5;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.model-toggle button {
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  border: none;
+  background: #fff;
+  color: #888;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+
+.model-toggle button:first-child {
+  border-right: 1px solid #d0ccc5;
+}
+
+.model-toggle button.active {
+  background: #f0ede8;
+  color: #333;
+}
+
+.model-toggle button:hover:not(.active) {
+  background: #f7f5f2;
+  color: #555;
+}
+
 .generate-btn {
   padding: 3px 10px;
   font-size: 11px;

@@ -5,6 +5,7 @@ export interface Document {
   id: string
   title: string
   content: string
+  context: string
   created_at: string
   updated_at: string
 }
@@ -45,7 +46,7 @@ export interface RawProvenanceEvent {
   deleted_text: string
   author: string
   timestamp: string
-  origin: 'human' | 'ai_generated' | 'ai_modified'
+  origin: 'human' | 'ai_generated' | 'ai_modified' | 'ai_influenced'
   edit_type: string | null
 }
 
@@ -76,11 +77,11 @@ export async function getProvenanceEvents(docId: string): Promise<ProvenanceEven
   return res.json() as Promise<ProvenanceEvent[]>
 }
 
-export async function generateSuggestions(documentId: string): Promise<Suggestion[]> {
+export async function generateSuggestions(documentId: string, dismissed: string[] = [], model = 'claude-sonnet-4-6'): Promise<Suggestion[]> {
   const res = await fetch(`${BASE}/suggestions/generate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ document_id: documentId }),
+    body: JSON.stringify({ document_id: documentId, dismissed, model }),
   })
   if (!res.ok) {
     const body = await res.json().catch(() => ({})) as { detail?: string }
@@ -169,11 +170,12 @@ export async function saveDocument(
   id: string,
   title: string,
   content: string,
+  context?: string,
 ): Promise<Document> {
   const res = await fetch(`${BASE}/documents/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title, content }),
+    body: JSON.stringify({ title, content, ...(context !== undefined && { context }) }),
   })
   if (!res.ok) throw new Error(`Failed to save document: ${res.statusText}`)
   return res.json() as Promise<Document>

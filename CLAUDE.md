@@ -6,3 +6,4 @@
 - The general outline for the project is in PROMPT.md, split into seven iterative phases
 - Ask before making architectural decisions that aren't in PROMPT.md
 - Project memory & notes are stored in memory/ — read these at session start.
+- Add notes to memory/ after making changes to code to capture new capabilities, changes, bug fixes, structural decisions, etc.

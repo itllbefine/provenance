@@ -27,9 +27,9 @@ async def create_document(
     now = datetime.now(timezone.utc).isoformat()
 
     await db.execute(
-        "INSERT INTO documents (id, title, content, created_at, updated_at)"
-        " VALUES (?, ?, ?, ?, ?)",
-        (doc_id, doc.title, doc.content, now, now),
+        "INSERT INTO documents (id, title, content, context, created_at, updated_at)"
+        " VALUES (?, ?, ?, ?, ?, ?)",
+        (doc_id, doc.title, doc.content, doc.context, now, now),
     )
     await db.commit()
 
@@ -75,6 +75,8 @@ async def update_document(
         updates["title"] = doc.title
     if doc.content is not None:
         updates["content"] = doc.content
+    if doc.context is not None:
+        updates["context"] = doc.context
     updates["updated_at"] = datetime.now(timezone.utc).isoformat()
 
     set_clause = ", ".join(f"{k} = ?" for k in updates)

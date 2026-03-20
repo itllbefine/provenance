@@ -18,6 +18,10 @@ export default function App() {
   const [focusedIndex, setFocusedIndex] = useState<number | null>(null)
   const [isGenerating, setIsGenerating] = useState(false)
   const [generateError, setGenerateError] = useState<string | null>(null)
+  const [suggestionModel, setSuggestionModel] = useState<'claude-sonnet-4-6' | 'claude-opus-4-6'>('claude-sonnet-4-6')
+  // original_text values the user has dismissed — sent to the backend so Claude
+  // won't re-suggest them. Reset when switching documents.
+  const [dismissed, setDismissed] = useState<string[]>([])
 
   // EditorPanel registers its applyEdit function here so App can call it
   // when the user accepts a suggestion.
@@ -68,6 +72,33 @@ export default function App() {
     [doc],
   )
 
+  // Reset suggestion state when the user switches to a different document
+  const docId = doc?.id
+  useEffect(() => {
+    setDismissed([])
+    setSuggestions([])
+    setFocusedIndex(null)
+    setGenerateError(null)
+  }, [docId])
+
+  // Debounced context save — separate from the title/content save so they
+  // don't interfere with each other.
+  const contextTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  function handleContextChange(context: string) {
+    if (!doc) return
+    setDoc((prev) => (prev ? { ...prev, context } : prev))
+    if (contextTimerRef.current) clearTimeout(contextTimerRef.current)
+    contextTimerRef.current = setTimeout(async () => {
+      try {
+        const updated = await saveDocument(doc.id, doc.title, doc.content, context)
+        setDoc(updated)
+      } catch (err) {
+        console.error('Context save failed:', err)
+      }
+    }, 1000)
+  }
+
   async function handleGenerate() {
     if (!doc || isGenerating) return
     setIsGenerating(true)
@@ -75,7 +106,7 @@ export default function App() {
     setSuggestions([])
     setFocusedIndex(null)
     try {
-      const results = await generateSuggestions(doc.id)
+      const results = await generateSuggestions(doc.id, dismissed, suggestionModel)
       setSuggestions(results)
       if (results.length > 0) setFocusedIndex(0)
     } catch (err) {
@@ -108,6 +139,10 @@ export default function App() {
   }
 
   function handleDismiss(index: number) {
+    const suggestion = suggestions[index]
+    if (suggestion) {
+      setDismissed((prev) => [...prev, suggestion.original_text])
+    }
     removeSuggestion(index)
   }
 
@@ -133,6 +168,8 @@ export default function App() {
             focusedIndex={focusedIndex}
             isGenerating={isGenerating}
             generateError={generateError}
+            model={suggestionModel}
+            onModelChange={setSuggestionModel}
             onGenerate={handleGenerate}
             onFocus={setFocusedIndex}
             onAccept={handleAccept}
@@ -150,9 +187,12 @@ export default function App() {
           documentId={doc.id}
           initialTitle={doc.title}
           initialContent={doc.content}
+          initialContext={doc.context}
           onChange={handleChange}
+          onContextChange={handleContextChange}
           saveStatus={saveStatus}
           onRegisterApplyEdit={(fn) => { applyEditRef.current = fn }}
+          getSuggestions={() => suggestions}
         />
       </div>
     </div>

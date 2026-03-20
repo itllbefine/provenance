@@ -1,7 +1,7 @@
 import { EditorContent, useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { RawProvenanceEvent } from '../api'
+import type { RawProvenanceEvent, Suggestion } from '../api'
 import { flushProvenanceEvents } from '../api'
 import { ProvenanceExtension } from '../provenance/ProvenanceExtension'
 import { HeatmapExtension, heatmapKey } from '../provenance/HeatmapExtension'
@@ -15,11 +15,14 @@ interface Props {
   documentId: string
   initialTitle: string
   initialContent: string
+  initialContext: string
   onChange: (title: string, content: string) => void
+  onContextChange: (context: string) => void
   saveStatus: SaveStatus
   // Called once on mount with a function that accepts an AI suggestion.
   // The function returns true if the original text was found and replaced.
   onRegisterApplyEdit?: (fn: (original: string, suggested: string, editType: string) => boolean) => void
+  getSuggestions: () => Suggestion[]
 }
 
 const SAVE_LABEL: Record<SaveStatus, string> = {
@@ -43,11 +46,16 @@ export default function EditorPanel({
   documentId,
   initialTitle,
   initialContent,
+  initialContext,
   onChange,
+  onContextChange,
   saveStatus,
   onRegisterApplyEdit,
+  getSuggestions,
 }: Props) {
   const [title, setTitle] = useState(initialTitle)
+  const [context, setContext] = useState(initialContext)
+  const [showContext, setShowContext] = useState(false)
   const [showDebug, setShowDebug] = useState(false)
   const [showYouness, setShowYouness] = useState(false)
   const [showTimeline, setShowTimeline] = useState(false)
@@ -73,6 +81,11 @@ export default function EditorPanel({
   const handleProvenanceEventRef = useRef((event: RawProvenanceEvent) => {
     pendingEventsRef.current.push(event)
   })
+
+  // Keep a ref to getSuggestions so the extension always sees the latest list
+  // without needing to be reconfigured.
+  const getSuggestionsRef = useRef(getSuggestions)
+  getSuggestionsRef.current = getSuggestions
 
   // Flush the pending event buffer to the backend.
   async function flushEvents() {
@@ -106,6 +119,7 @@ export default function EditorPanel({
     () =>
       ProvenanceExtension.configure({
         onEvent: (e) => handleProvenanceEventRef.current(e),
+        getSuggestions: () => getSuggestionsRef.current(),
       }),
     [],
   )
@@ -119,6 +133,9 @@ export default function EditorPanel({
       HeatmapExtension,
     ],
     content: parseContent(initialContent),
+    editorProps: {
+      attributes: { spellcheck: 'true' },
+    },
     onUpdate({ editor }) {
       onChangeRef.current(titleRef.current, JSON.stringify(editor.getJSON()))
     },
@@ -196,6 +213,7 @@ export default function EditorPanel({
     if (editor) {
       editor.commands.setContent(parseContent(initialContent))
       setTitle(initialTitle)
+      setContext(initialContext)
     }
     // Only run when documentId changes, not on every render
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -290,12 +308,39 @@ export default function EditorPanel({
           Timeline
         </button>
 
+        <button
+          onClick={() => setShowContext((v) => !v)}
+          className={showContext ? 'active' : ''}
+          title="Document context"
+        >
+          Context
+        </button>
+
         <div className="toolbar-spacer" />
 
         <span className={`save-status save-status--${saveStatus}`}>
           {SAVE_LABEL[saveStatus]}
         </span>
       </div>
+
+      {showContext && (
+        <div className="context-panel">
+          <label className="context-label" htmlFor="doc-context">
+            Document context
+          </label>
+          <textarea
+            id="doc-context"
+            className="context-textarea"
+            value={context}
+            onChange={(e) => {
+              setContext(e.target.value)
+              onContextChange(e.target.value)
+            }}
+            placeholder={'Describe the purpose, tone, and audience — e.g. "persuasive essay aimed at policy makers" or "technical API reference for developers". Claude will use this when generating suggestions.'}
+            rows={3}
+          />
+        </div>
+      )}
 
       <input
         className="document-title"

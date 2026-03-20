@@ -3,11 +3,15 @@ import type { Suggestion } from '../api'
 import './SidePanel.css'
 import './SuggestionsPanel.css'
 
+type SuggestionModel = 'claude-sonnet-4-6' | 'claude-opus-4-6'
+
 interface Props {
   suggestions: Suggestion[]
   focusedIndex: number | null
   isGenerating: boolean
   generateError: string | null
+  model: SuggestionModel
+  onModelChange: (model: SuggestionModel) => void
   onGenerate: () => void
   onFocus: (index: number) => void
   onAccept: (index: number) => void
@@ -44,6 +48,8 @@ export default function SuggestionsPanel({
   focusedIndex,
   isGenerating,
   generateError,
+  model,
+  onModelChange,
   onGenerate,
   onFocus,
   onAccept,
@@ -53,6 +59,22 @@ export default function SuggestionsPanel({
     <div className="side-panel suggestions-panel">
       <div className="panel-header suggestions-header">
         <span>Suggestions</span>
+        <div className="model-toggle">
+          <button
+            className={model === 'claude-sonnet-4-6' ? 'active' : ''}
+            onClick={() => onModelChange('claude-sonnet-4-6')}
+            title="Use Claude Sonnet"
+          >
+            Sonnet
+          </button>
+          <button
+            className={model === 'claude-opus-4-6' ? 'active' : ''}
+            onClick={() => onModelChange('claude-opus-4-6')}
+            title="Use Claude Opus"
+          >
+            Opus
+          </button>
+        </div>
         <button
           className="generate-btn"
           onClick={onGenerate}

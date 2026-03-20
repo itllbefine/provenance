@@ -87,6 +87,7 @@ async def init_db() -> None:
     for column_def in [
         "ALTER TABLE provenance_events ADD COLUMN origin TEXT NOT NULL DEFAULT 'human'",
         "ALTER TABLE provenance_events ADD COLUMN edit_type TEXT",
+        "ALTER TABLE documents ADD COLUMN context TEXT NOT NULL DEFAULT ''",
     ]:
         try:
             async with aiosqlite.connect(DB_PATH) as _db:

@@ -6,7 +6,7 @@ import anthropic
 from fastapi import APIRouter, Depends, HTTPException
 
 from database import get_db
-from models import SuggestionRequest, SuggestionResponse
+from models import ALLOWED_SUGGESTION_MODELS, SuggestionRequest, SuggestionResponse
 
 router = APIRouter(prefix="/suggestions", tags=["suggestions"])
 
@@ -130,7 +130,7 @@ async def generate_suggestions(
     suggestions, and return them as structured data.
     """
     async with db.execute(
-        "SELECT content, title FROM documents WHERE id = ?", (body.document_id,)
+        "SELECT content, title, context FROM documents WHERE id = ?", (body.document_id,)
     ) as cursor:
         row = await cursor.fetchone()
 
@@ -151,20 +151,50 @@ async def generate_suggestions(
         )
 
     title = row["title"]
+    doc_context = (row["context"] or "").strip()
+
+    # Build an effective system prompt: start with the base instructions, then
+    # append the user-supplied document context if one was provided.
+    effective_system = SYSTEM_PROMPT
+    if doc_context:
+        effective_system += (
+            f"\n\nDocument context (provided by the author — let this guide your "
+            f"suggestions about tone, purpose, and audience):\n{doc_context}"
+        )
+
     user_message = (
         f"Title: {title}\n\n{document_text}"
         if title and title != "Untitled"
         else document_text
     )
 
+    # Keep only dismissed originals that still appear verbatim in the document.
+    # If the text was changed, it won't match and is silently dropped — this
+    # implements the "unless I make a change to it" behaviour.
+    active_dismissed = [t for t in body.dismissed if t in document_text]
+
+    if active_dismissed:
+        dismissed_block = "\n".join(f'- "{t}"' for t in active_dismissed)
+        user_message += (
+            f"\n\nThe user has already dismissed the following suggestions and does NOT "
+            f"want them suggested again. Do not include any suggestion whose "
+            f"`original_text` matches one of these:\n{dismissed_block}"
+        )
+
+    if body.model not in ALLOWED_SUGGESTION_MODELS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid model. Allowed values: {', '.join(sorted(ALLOWED_SUGGESTION_MODELS))}",
+        )
+
     client = get_client()
 
     # tool_choice="any" forces Claude to call one of the provided tools.
     # This guarantees a structured response rather than a plain-text reply.
     response = await client.messages.create(
-        model="claude-sonnet-4-6",
+        model=body.model,
         max_tokens=4096,
-        system=SYSTEM_PROMPT,
+        system=effective_system,
         tools=[SUGGESTION_TOOL],
         tool_choice={"type": "any"},
         messages=[{"role": "user", "content": user_message}],
@@ -176,6 +206,11 @@ async def generate_suggestions(
         if block.type == "tool_use" and block.name == "record_suggestions":
             suggestions_raw = block.input.get("suggestions", [])
             break
+
+    # Safety net: drop any suggestion whose original_text is still dismissed,
+    # in case Claude ignored the instruction.
+    dismissed_set = set(active_dismissed)
+    suggestions_raw = [s for s in suggestions_raw if s["original_text"] not in dismissed_set]
 
     return [
         SuggestionResponse(

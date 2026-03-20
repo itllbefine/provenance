@@ -6,7 +6,26 @@
       "Bash(.venv/bin/pip install:*)",
       "Bash(npm install:*)",
       "Bash(npx tsc:*)",
-      "Bash(.venv/bin/python3.12 -c \"from routers.provenance import router; print\\(''OK''\\)\")"
+      "Bash(.venv/bin/python3.12 -c \"from routers.provenance import router; print\\(''OK''\\)\")",
+      "Bash(git remote:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(git rebase:*)",
+      "Bash(git rm:*)",
+      "Bash(.venv/bin/python3.12 -c \"import routers.suggestions; print\\(''OK''\\)\")",
+      "Bash(npm run:*)",
+      "Bash(.venv/bin/python3.12 -c \"\nimport sqlite3\nconn = sqlite3.connect\\('provenance.db'\\)\ncur = conn.execute\\('PRAGMA table_info\\(provenance_events\\)'\\)\nfor row in cur.fetchall\\(\\):\n    print\\(row\\)\nconn.close\\(\\)\n\")",
+      "Bash(.venv/bin/python3.12 -c \"from main import app; print\\('App OK'\\)\")",
+      "Bash(.venv/bin/python3.12 -c \"import routers.youness; print\\(''youness router OK''\\)\")",
+      "Bash(.venv/bin/python3.12 -c \"import main; print\\('main OK'\\)\")",
+      "Bash(backend/.venv/bin/python3.12 -c \"from routers import timeline; print\\(''timeline import OK''\\)\")",
+      "Bash(.venv/bin/python3.12 -c \"from routers import timeline; print\\(''timeline import OK''\\)\")",
+      "Bash(.venv/bin/python3.12 -c \"import main; print\\('main import OK'\\)\")",
+      "Bash(backend/.venv/bin/python3.12 -c \"from routers import suggestions; print\\('ok'\\)\")",
+      "Bash(.venv/bin/python3.12 -c \"from routers import suggestions; print\\(''ok''\\)\")",
+      "Bash(.venv/bin/python3.12 -c \"from routers import suggestions, documents; print\\(''ok''\\)\")",
+      "Bash(chmod:*)"
     ]
   }
 }

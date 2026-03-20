@@ -6,18 +6,21 @@ class DocumentCreate(BaseModel):
     title: str = "Untitled"
     # The ProseMirror document tree, serialized to a JSON string for storage
     content: str = "{}"
+    context: str = ""  # User-supplied description of the document's purpose and tone
 
 
 class DocumentUpdate(BaseModel):
     # All fields optional — only the fields that are provided get updated
     title: Optional[str] = None
     content: Optional[str] = None
+    context: Optional[str] = None
 
 
 class DocumentResponse(BaseModel):
     id: str
     title: str
     content: str
+    context: str
     created_at: str
     updated_at: str
 
@@ -32,7 +35,7 @@ class ProvenanceEventCreate(BaseModel):
     deleted_text: str = ""
     author: str
     timestamp: str           # ISO 8601
-    origin: str = "human"   # 'human' | 'ai_generated' | 'ai_modified'
+    origin: str = "human"   # 'human' | 'ai_generated' | 'ai_modified' | 'ai_influenced'
     # AI edit types (set at suggestion time):  'grammar_fix' | 'wording_change' | 'organizational_move'
     # Human edit types (set by classifier):    'human_grammar_fix' | 'human_wording_change' | 'human_organizational_move'
     edit_type: Optional[str] = None
@@ -98,8 +101,12 @@ class TimelineResponse(BaseModel):
 
 # --- AI suggestions ---
 
+ALLOWED_SUGGESTION_MODELS = {"claude-sonnet-4-6", "claude-opus-4-6"}
+
 class SuggestionRequest(BaseModel):
     document_id: str
+    dismissed: list[str] = []  # original_text values the user has dismissed
+    model: str = "claude-sonnet-4-6"
 
 
 class SuggestionResponse(BaseModel):

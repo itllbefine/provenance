@@ -62,6 +62,49 @@
 .save-status--saving  { color: #888; }
 .save-status--error   { color: #c0392b; }
 
+/* ── Context panel ── */
+
+.context-panel {
+  padding: 12px 48px;
+  border-bottom: 1px solid #e8e5e0;
+  background: #fafaf8;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.context-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #aaa;
+}
+
+.context-textarea {
+  font-size: 13px;
+  font-family: inherit;
+  line-height: 1.5;
+  color: #1a1a18;
+  background: #fff;
+  border: 1px solid #e0ddd8;
+  border-radius: 6px;
+  padding: 8px 10px;
+  resize: vertical;
+  outline: none;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.context-textarea:focus {
+  border-color: #bbb;
+}
+
+.context-textarea::placeholder {
+  color: #bbb;
+}
+
 /* ── Title input ── */
 
 .document-title {
