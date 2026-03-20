@@ -1,0 +1,260 @@
+/* ── Overlay + modal shell ── */
+
+.youness-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.youness-modal {
+  background: #fff;
+  border-radius: 10px;
+  width: 480px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 64px);
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
+  overflow: hidden;
+}
+
+/* ── Header ── */
+
+.youness-header {
+  display: flex;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e8e5e0;
+  flex-shrink: 0;
+}
+
+.youness-title {
+  flex: 1;
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: #1a1a18;
+}
+
+.youness-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  color: #888;
+  padding: 2px 6px;
+  border-radius: 4px;
+  line-height: 1;
+}
+
+.youness-close:hover {
+  background: #ebe8e3;
+  color: #1a1a18;
+}
+
+/* ── Scrollable body ── */
+
+.youness-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* ── Sections ── */
+
+.youness-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.youness-section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.youness-section-header h3 {
+  flex: 1;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: #555;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* ── Buttons ── */
+
+.youness-upload-btn,
+.youness-score-btn {
+  padding: 5px 12px;
+  border: 1px solid #d0ccc5;
+  border-radius: 5px;
+  background: #fafaf8;
+  font-size: 13px;
+  font-weight: 600;
+  color: #444;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.youness-upload-btn:hover,
+.youness-score-btn:hover {
+  background: #ebe8e3;
+}
+
+.youness-upload-btn:disabled,
+.youness-score-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* ── Sample list ── */
+
+.youness-sample-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.youness-sample-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: #fafaf8;
+  border: 1px solid #e8e5e0;
+  border-radius: 5px;
+  font-size: 13px;
+}
+
+.youness-sample-name {
+  flex: 1;
+  color: #1a1a18;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.youness-sample-meta {
+  color: #aaa;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.youness-delete-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+  color: #bbb;
+  padding: 2px 4px;
+  border-radius: 3px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.youness-delete-btn:hover {
+  background: #fee2e2;
+  color: #c0392b;
+}
+
+/* ── Score display ── */
+
+.youness-score-display {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.youness-score-circle {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  border: 3px solid #e8e5e0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto;
+}
+
+.youness-score-number {
+  font-size: 36px;
+  font-weight: 700;
+  color: #1a1a18;
+  line-height: 1;
+}
+
+.youness-score-label {
+  font-size: 12px;
+  color: #aaa;
+  margin-top: 2px;
+}
+
+.youness-explanation {
+  margin: 0;
+  font-size: 14px;
+  color: #444;
+  line-height: 1.6;
+  font-family: Georgia, 'Times New Roman', serif;
+}
+
+/* ── Human / AI breakdown bar ── */
+
+.youness-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.youness-breakdown-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: #888;
+}
+
+.youness-bar {
+  height: 10px;
+  border-radius: 5px;
+  background: #f0ede8;
+  overflow: hidden;
+  display: flex;
+}
+
+.youness-bar-human {
+  background: rgba(251, 191, 36, 0.75); /* amber — matches heatmap human color */
+  transition: width 0.4s ease;
+}
+
+.youness-bar-ai {
+  background: rgba(167, 139, 250, 0.75); /* violet — matches heatmap AI color */
+  transition: width 0.4s ease;
+}
+
+/* ── Hint / error text ── */
+
+.youness-hint {
+  margin: 0;
+  font-size: 13px;
+  color: #aaa;
+  line-height: 1.5;
+}
+
+.youness-error {
+  margin: 0;
+  font-size: 13px;
+  color: #c0392b;
+}

@@ -68,6 +68,17 @@ async def init_db() -> None:
             )
         """)
 
+        # Uploaded baseline writing samples used by the you-ness scorer.
+        # Each row is one plain-text file the user uploaded.
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS style_samples (
+                id          TEXT PRIMARY KEY,
+                text        TEXT NOT NULL,
+                filename    TEXT NOT NULL,
+                uploaded_at TEXT NOT NULL
+            )
+        """)
+
         await db.commit()
 
     # Add origin/edit_type columns to provenance_events if they don't exist yet.

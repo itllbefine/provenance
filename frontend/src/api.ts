@@ -89,6 +89,54 @@ export async function generateSuggestions(documentId: string): Promise<Suggestio
   return res.json() as Promise<Suggestion[]>
 }
 
+// ── You-ness scoring ──────────────────────────────────────────────────────────
+
+export interface StyleSample {
+  id: string
+  filename: string
+  uploaded_at: string
+  char_count: number
+}
+
+export interface YounessScore {
+  score: number        // 0–100
+  explanation: string  // plain-English explanation from Claude
+  human_pct: number    // % of inserted text from human edits
+  ai_pct: number       // % of inserted text from AI edits
+  sample_count: number // number of baseline samples used
+}
+
+export async function uploadStyleSample(file: File): Promise<StyleSample> {
+  const form = new FormData()
+  form.append('file', file)
+  const res = await fetch(`${BASE}/youness/samples`, { method: 'POST', body: form })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({})) as { detail?: string }
+    throw new Error(body.detail ?? `Upload failed: ${res.statusText}`)
+  }
+  return res.json() as Promise<StyleSample>
+}
+
+export async function listStyleSamples(): Promise<StyleSample[]> {
+  const res = await fetch(`${BASE}/youness/samples`)
+  if (!res.ok) throw new Error(`Failed to list samples: ${res.statusText}`)
+  return res.json() as Promise<StyleSample[]>
+}
+
+export async function deleteStyleSample(id: string): Promise<void> {
+  const res = await fetch(`${BASE}/youness/samples/${id}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error(`Failed to delete sample: ${res.statusText}`)
+}
+
+export async function getYounessScore(docId: string): Promise<YounessScore> {
+  const res = await fetch(`${BASE}/youness/score/${docId}`)
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({})) as { detail?: string }
+    throw new Error(body.detail ?? `Scoring failed: ${res.statusText}`)
+  }
+  return res.json() as Promise<YounessScore>
+}
+
 export async function saveDocument(
   id: string,
   title: string,

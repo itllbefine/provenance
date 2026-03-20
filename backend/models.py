@@ -58,6 +58,23 @@ class ProvenanceEventResponse(BaseModel):
     edit_type: Optional[str] = None
 
 
+# --- You-ness scoring ---
+
+class StyleSampleResponse(BaseModel):
+    id: str
+    filename: str
+    uploaded_at: str
+    char_count: int
+
+
+class YounessScoreResponse(BaseModel):
+    score: int              # 0–100 stylometric similarity score
+    explanation: str        # plain-English explanation from Claude
+    human_pct: float        # % of inserted text from human edits
+    ai_pct: float           # % of inserted text from AI edits
+    sample_count: int       # number of baseline samples used in the score
+
+
 # --- AI suggestions ---
 
 class SuggestionRequest(BaseModel):
