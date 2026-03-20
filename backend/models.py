@@ -75,6 +75,27 @@ class YounessScoreResponse(BaseModel):
     sample_count: int       # number of baseline samples used in the score
 
 
+# --- Timeline snapshots ---
+
+
+class TimelineSpan(BaseModel):
+    text: str
+    # 'human' | 'ai_generated' | 'ai_modified' | 'boundary' (paragraph separator)
+    origin: str
+    edit_type: Optional[str] = None
+
+
+class TimelineMilestone(BaseModel):
+    milestone: float       # 0.25, 0.50, 0.75, or 1.00
+    event_count: int       # number of events included up to this milestone
+    timestamp: str         # ISO 8601 timestamp of the last event in this window
+    spans: list[TimelineSpan]
+
+
+class TimelineResponse(BaseModel):
+    milestones: list[TimelineMilestone]
+
+
 # --- AI suggestions ---
 
 class SuggestionRequest(BaseModel):

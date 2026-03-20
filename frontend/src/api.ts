@@ -137,6 +137,34 @@ export async function getYounessScore(docId: string): Promise<YounessScore> {
   return res.json() as Promise<YounessScore>
 }
 
+// ── Timeline snapshots ────────────────────────────────────────────────────────
+
+export interface TimelineSpan {
+  text: string
+  origin: string        // 'human' | 'ai_generated' | 'ai_modified' | 'boundary'
+  edit_type: string | null
+}
+
+export interface TimelineMilestone {
+  milestone: number     // 0.25, 0.50, 0.75, or 1.00
+  event_count: number
+  timestamp: string     // ISO 8601
+  spans: TimelineSpan[]
+}
+
+export interface TimelineResponse {
+  milestones: TimelineMilestone[]
+}
+
+export async function getTimeline(docId: string): Promise<TimelineResponse> {
+  const res = await fetch(`${BASE}/timeline/${docId}`)
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({})) as { detail?: string }
+    throw new Error(body.detail ?? `Failed to load timeline: ${res.statusText}`)
+  }
+  return res.json() as Promise<TimelineResponse>
+}
+
 export async function saveDocument(
   id: string,
   title: string,

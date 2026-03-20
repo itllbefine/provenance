@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from database import init_db
-from routers import documents, provenance, suggestions, youness
+from routers import documents, provenance, suggestions, timeline, youness
 
 # Load ANTHROPIC_API_KEY (and any other vars) from backend/.env if present.
 # This must run before any route handlers that use the API key.
@@ -36,6 +36,7 @@ app.include_router(documents.router)
 app.include_router(provenance.router)
 app.include_router(suggestions.router)
 app.include_router(youness.router)
+app.include_router(timeline.router)
 
 
 @app.get("/health")

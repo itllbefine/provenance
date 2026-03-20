@@ -8,6 +8,7 @@ import { HeatmapExtension, heatmapKey } from '../provenance/HeatmapExtension'
 import type { SaveStatus } from '../App'
 import ProvenanceDebugPanel from './ProvenanceDebugPanel'
 import YounessModal from './YounessModal'
+import TimelineModal from './TimelineModal'
 import './EditorPanel.css'
 
 interface Props {
@@ -49,6 +50,7 @@ export default function EditorPanel({
   const [title, setTitle] = useState(initialTitle)
   const [showDebug, setShowDebug] = useState(false)
   const [showYouness, setShowYouness] = useState(false)
+  const [showTimeline, setShowTimeline] = useState(false)
 
   // Refs to prevent stale closures in editor callbacks.
   // See the comment in the original EditorPanel for a full explanation.
@@ -281,6 +283,13 @@ export default function EditorPanel({
           Score
         </button>
 
+        <button
+          onClick={() => setShowTimeline(true)}
+          title="Document timeline"
+        >
+          Timeline
+        </button>
+
         <div className="toolbar-spacer" />
 
         <span className={`save-status save-status--${saveStatus}`}>
@@ -303,6 +312,13 @@ export default function EditorPanel({
         <YounessModal
           documentId={documentId}
           onClose={() => setShowYouness(false)}
+        />
+      )}
+
+      {showTimeline && (
+        <TimelineModal
+          documentId={documentId}
+          onClose={() => setShowTimeline(false)}
         />
       )}
     </div>
