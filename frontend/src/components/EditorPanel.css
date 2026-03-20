@@ -141,15 +141,47 @@
   border-radius: 2px;
 }
 
-/* Phase 3: human-written text (typed this session).
-   Warm amber tint — visible but not distracting while writing.
-   The color and class name are designed to extend easily:
-   Phase 5 will add heatmap-span--human-grammar, --human-wording, etc. */
+/* ── Human edits ── */
+
+/* Default: human-typed text with no specific classification.
+   Warm amber tint — the baseline "you wrote this" signal. */
 .heatmap-span--human {
-  background-color: rgba(251, 191, 36, 0.25); /* amber-300 at 25% opacity */
+  background-color: rgba(251, 191, 36, 0.25); /* amber-300 */
 }
 
-/* Phase 4: text inserted by accepting an AI suggestion. Rose tint. */
+/* Human grammar/punctuation/spelling fix — light cyan */
+.heatmap-span--human-grammar-fix {
+  background-color: rgba(34, 211, 238, 0.30); /* cyan-400 */
+}
+
+/* Human rewording for clarity or tone — light green */
+.heatmap-span--human-wording-change {
+  background-color: rgba(74, 222, 128, 0.30); /* green-400 */
+}
+
+/* Human structural reorganisation — light blue */
+.heatmap-span--human-organizational-move {
+  background-color: rgba(96, 165, 250, 0.35); /* blue-400 */
+}
+
+/* ── AI edits ── */
+
+/* AI grammar/punctuation fix — light yellow */
+.heatmap-span--ai-grammar-fix {
+  background-color: rgba(253, 224, 71, 0.45); /* yellow-300 */
+}
+
+/* AI rewording for clarity or tone — light orange */
+.heatmap-span--ai-wording-change {
+  background-color: rgba(251, 146, 60, 0.35); /* orange-400 */
+}
+
+/* AI structural reorganisation — light purple */
+.heatmap-span--ai-organizational-move {
+  background-color: rgba(167, 139, 250, 0.40); /* violet-400 */
+}
+
+/* Fallback for AI edits where edit_type is unknown — rose tint (Phase 4 color) */
 .heatmap-span--ai-modified {
-  background-color: rgba(251, 113, 133, 0.25); /* rose-400 at 25% opacity */
+  background-color: rgba(251, 113, 133, 0.25); /* rose-400 */
 }

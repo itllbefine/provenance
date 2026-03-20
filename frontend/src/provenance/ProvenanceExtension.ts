@@ -1,6 +1,7 @@
 import { Extension } from '@tiptap/core'
 import { ReplaceStep } from '@tiptap/pm/transform'
 import type { RawProvenanceEvent } from '../api'
+import { classifyHumanEdit } from './classifier'
 
 // The options we accept via ProvenanceExtension.configure({ ... })
 interface ProvenanceOptions {
@@ -60,7 +61,6 @@ export const ProvenanceExtension = Extension.create<ProvenanceOptions>({
     const aiMeta = transaction.getMeta('ai_suggestion') as AiSuggestionMeta | undefined
     const author = aiMeta?.author ?? 'local_user'
     const origin: RawProvenanceEvent['origin'] = aiMeta?.origin ?? 'human'
-    const edit_type = aiMeta?.edit_type ?? null
 
     for (const step of transaction.steps) {
       // ReplaceStep is the ProseMirror step type for all text-level changes.
@@ -96,6 +96,11 @@ export const ProvenanceExtension = Extension.create<ProvenanceOptions>({
           : deletedText
             ? 'delete'
             : 'insert'
+
+      // For AI suggestions the edit_type is known from the meta. For human
+      // edits, apply the rule-based classifier. Ambiguous cases (null) are
+      // sent to the backend, which calls Claude to fill them in.
+      const edit_type = aiMeta?.edit_type ?? classifyHumanEdit(insertedText, deletedText)
 
       this.options.onEvent({
         event_type,

@@ -33,7 +33,9 @@ class ProvenanceEventCreate(BaseModel):
     author: str
     timestamp: str           # ISO 8601
     origin: str = "human"   # 'human' | 'ai_generated' | 'ai_modified'
-    edit_type: Optional[str] = None  # 'grammar_fix' | 'wording_change' | 'organizational_move' | None
+    # AI edit types (set at suggestion time):  'grammar_fix' | 'wording_change' | 'organizational_move'
+    # Human edit types (set by classifier):    'human_grammar_fix' | 'human_wording_change' | 'human_organizational_move'
+    edit_type: Optional[str] = None
 
 
 class ProvenanceBatchCreate(BaseModel):

@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from database import get_db
 from models import ProvenanceBatchCreate, ProvenanceEventResponse
+from routers.classify import classify_human_edit
 
 router = APIRouter(prefix="/provenance", tags=["provenance"])
 
@@ -25,6 +26,14 @@ async def create_events(
 
     created = []
     for event in batch.events:
+        # Classify human edits that arrived without an edit_type.
+        # Rule-based classification runs synchronously; Claude is called only
+        # for ambiguous replacements larger than a few characters.
+        if event.origin == "human" and event.edit_type is None:
+            event.edit_type = await classify_human_edit(
+                event.inserted_text, event.deleted_text
+            )
+
         event_id = str(uuid.uuid4())
         await db.execute(
             """
