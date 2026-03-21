@@ -15,7 +15,10 @@ interface Props {
 function spanBg(origin: string, editType: string | null): string {
   if (origin === 'boundary') return 'transparent'
 
-  if (origin === 'human') {
+  // Original first-draft human typing — no highlight
+  if (origin === 'human') return 'transparent'
+
+  if (origin === 'human_edit') {
     switch (editType) {
       case 'human_grammar_fix':         return 'rgba(34, 211, 238, 0.30)'
       case 'human_wording_change':      return 'rgba(74, 222, 128, 0.30)'
