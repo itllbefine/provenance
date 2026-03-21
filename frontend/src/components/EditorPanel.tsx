@@ -244,7 +244,7 @@ export default function EditorPanel({
         // Cursor placed with no selection — clear any stored selection.
         onSelectionChangeRef.current?.(null)
       } else {
-        const text = editor.state.doc.textBetween(from, to, '\n\n')
+        const text = editor.state.doc.textBetween(from, to, '\n\n', '\n')
         onSelectionChangeRef.current?.(text || null)
       }
     },
@@ -278,6 +278,16 @@ export default function EditorPanel({
       let combined = ''
       let lastTextEnd = -1
       doc.descendants((node, pos) => {
+        if (node.type.name === 'hardBreak') {
+          if (lastTextEnd !== -1 && pos > lastTextEnd + 1) {
+            posMap.push(-1, -1)
+            combined += '\n\n'
+          }
+          posMap.push(-1)
+          combined += '\n'
+          lastTextEnd = pos + 1
+          return
+        }
         if (!node.isText || !node.text) return
         if (lastTextEnd !== -1 && pos > lastTextEnd + 1) {
           posMap.push(-1, -1)

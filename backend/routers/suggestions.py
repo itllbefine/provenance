@@ -42,6 +42,9 @@ def extract_text(node: dict) -> str:
     characters. Block nodes (paragraph, heading, …) wrap text nodes and
     should be separated by newlines so Claude sees the document structure.
     """
+    if node.get("type") == "hardBreak":
+        return "\n"
+
     if node.get("type") == "text":
         return node.get("text", "")
 
