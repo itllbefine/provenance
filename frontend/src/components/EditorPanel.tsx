@@ -54,7 +54,10 @@ function buildDecorationsFromSpans(
   const chars: { cls: string }[] = []
   for (const span of spans) {
     if (span.origin === 'boundary') continue
-    const cls = `heatmap-span ${spanCssClass(span.origin, span.edit_type)}`
+    // 'human' = original unmodified text, no decoration. Still add entries so
+    // charIdx stays aligned with document positions for subsequent spans.
+    const modifierCls = spanCssClass(span.origin, span.edit_type)
+    const cls = modifierCls ? `heatmap-span ${modifierCls}` : ''
     for (const ch of span.text) {
       if (ch === '\n') continue
       chars.push({ cls })

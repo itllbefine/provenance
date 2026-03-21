@@ -46,7 +46,7 @@ export interface RawProvenanceEvent {
   deleted_text: string
   author: string
   timestamp: string
-  origin: 'human' | 'ai_generated' | 'ai_modified' | 'ai_influenced' | 'ai_collaborative'
+  origin: 'human' | 'human_edit' | 'ai_generated' | 'ai_modified' | 'ai_influenced' | 'ai_collaborative'
   edit_type: string | null
 }
 

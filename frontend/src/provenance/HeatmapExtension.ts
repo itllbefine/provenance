@@ -108,6 +108,10 @@ export const HeatmapExtension = Extension.create({
                 const insertedSize = step.slice.content.size
                 if (insertedSize === 0) continue
 
+                // Pure human inserts (nothing deleted) are original first-draft typing — no color.
+                // Only color human edits where existing content was replaced.
+                if (!aiMeta && step.from === step.to) continue
+
                 // Map the step-local position through subsequent steps
                 // to get the position in tr.doc.
                 let from = step.from
@@ -186,7 +190,11 @@ export interface HeatmapSpan {
  * by the heatmap decorations.
  */
 export function spanCssClass(origin: string, editType: string | null): string {
-  if (origin === 'human') {
+  // 'human' = original first-draft typing, never replaced — no heatmap color.
+  if (origin === 'human') return ''
+
+  // 'human_edit' = human replaced existing content — show human color.
+  if (origin === 'human_edit') {
     switch (editType) {
       case 'human_grammar_fix':          return 'heatmap-span--human-grammar-fix'
       case 'human_wording_change':       return 'heatmap-span--human-wording-change'

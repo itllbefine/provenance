@@ -127,7 +127,10 @@ export const ProvenanceExtension = Extension.create<ProvenanceOptions>({
       // For human edits with enough content, check if the inserted text
       // closely matches any currently visible suggestion. If so, tag the
       // event as ai_influenced or ai_generated instead of plain human.
-      let origin: RawProvenanceEvent['origin'] = aiMeta?.origin ?? 'human'
+      // 'human_edit' marks text that replaced existing content (deletedText non-empty).
+      // Pure inserts ('human') are original first-draft typing and stay uncolored in the heatmap.
+      let origin: RawProvenanceEvent['origin'] =
+        aiMeta?.origin ?? (deletedText ? 'human_edit' : 'human')
       if (isHuman && insertedText.length >= 10) {
         const activeSuggestions = this.options.getSuggestions()
         for (const suggestion of activeSuggestions) {

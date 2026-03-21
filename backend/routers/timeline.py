@@ -101,6 +101,13 @@ def _apply_event(doc: _DocBuffer, event: dict) -> None:
     edit_type = event.get("edit_type")
     inserted = event.get("inserted_text") or ""
 
+    # Backward compat: old events stored origin='human' for all human typing.
+    # Upgrade replace events (something was deleted AND something inserted) to
+    # 'human_edit' so the heatmap colors them correctly.
+    deleted = event.get("deleted_text") or ""
+    if origin == "human" and inserted and deleted:
+        origin = "human_edit"
+
     # Fill in paragraph separators if the PM position is past the buffer end.
     # Each fill adds one '\\n', which accounts for 2 missing PM tokens
     # (a paragraph-close and the following paragraph-open).
