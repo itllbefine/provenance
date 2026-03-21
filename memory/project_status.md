@@ -6,6 +6,13 @@ type: project
 
 All 7 phases from PROMPT.md are complete, plus an additional collaborative chat feature. Last updated 2026-03-20.
 
+## App layout
+
+Three-column flex layout (left to right):
+1. **`.doc-list-panel`** (180px) — document list with "+ New" button; clicking a doc switches to it
+2. **`.left-panel`** (340px) — SuggestionsPanel (top, flex 3) + RationalePanel (bottom, flex 2)
+3. **`.right-panel`** (flex 1) — EditorPanel
+
 ## Tech stack
 
 - **Backend**: FastAPI (Python 3.12), aiosqlite (SQLite), Anthropic SDK
@@ -31,7 +38,9 @@ Migrations for new columns use `ALTER TABLE … ADD COLUMN` wrapped in try/excep
 | `text_snapshots` | periodic plain-text snapshots per document — used for timeline feature |
 | `provenance_spans` | legacy spans table (not actively used by current routes) |
 
-`origin` values: `'human' | 'ai_generated' | 'ai_modified' | 'ai_influenced' | 'ai_collaborative'`
+`origin` values: `'human' | 'human_edit' | 'ai_generated' | 'ai_modified' | 'ai_influenced' | 'ai_collaborative'`
+- `'human'` = original first-draft typing (pure insert, nothing deleted) — no heatmap color
+- `'human_edit'` = human replaced existing content (deletedText non-empty) — colored in heatmap
 
 Provenance tagging rule: tags only move toward more human involvement, never less. `ai_collaborative` is the most human-involved AI origin. Never overwrite a tag to imply less human involvement.
 
@@ -67,10 +76,12 @@ Classifies human edits into `human_grammar_fix`, `human_wording_change`, or `hum
 ## Frontend components
 
 ### `App.tsx`
-Top-level state: current document, save status, suggestions list, dismissed suggestions, focused suggestion index, document context, model selector, `activeSelection` (persisted editor selection string or null). Debounced save (1.5s content/title, 1s context). Dismissed suggestions and `activeSelection` reset on document switch. Wires `applyEdit` ref and `onSelectionChange` to EditorPanel; passes `activeSelection` + `onClearSelection` to RationalePanel.
+Top-level state: current document (`doc`), full document list (`allDocs`), save status, suggestions list, dismissed suggestions, focused suggestion index, document context, model selector, `activeSelection` (persisted editor selection string or null). Debounced save (1.5s content/title, 1s context). Dismissed suggestions and `activeSelection` reset on document switch. Wires `applyEdit` ref and `onSelectionChange` to EditorPanel; passes `activeSelection` + `onClearSelection` to RationalePanel.
+
+Document management: `handleNewDocument()` calls `createDocument()`, prepends to `allDocs`, and switches to the new doc. `handleSwitchDocument(doc)` cancels any pending save timer and switches to the selected doc. `handleChange` also updates the title in `allDocs` in real time so the list stays in sync.
 
 ### `EditorPanel.tsx`
-TipTap editor with toolbar (Bold, Italic, H1–H3, lists, blockquote, Heat, Log, Score, Timeline, Context). Collapsible context panel (textarea). Registers `applyEdit` callback via ref. Provenance events buffered in a ref and flushed to backend every 2s (and on unmount). `left-bottom` in App.css uses `overflow: hidden` so RationalePanel controls its own scroll.
+TipTap editor with toolbar (Bold, Italic, H1–H3, lists, blockquote, Log, Score, Timeline, Context). The **Heat button is commented out** — `HeatmapExtension`, `handleHeatmapToggle`, `buildDecorationsFromSpans`, and related imports are all commented out pending a fix. Collapsible context panel (textarea). Registers `applyEdit` callback via ref. Provenance events buffered in a ref and flushed to backend every 2s (and on unmount). `left-bottom` in App.css uses `overflow: hidden` so RationalePanel controls its own scroll.
 
 Accepts `onSelectionChange?: (text: string | null) => void` — fires with selected text when the user makes a non-empty selection while the editor is focused, or `null` when they place the cursor without selecting. Does NOT fire on blur, so the stored selection survives focus moving to the chat input. (Replaced the old `onRegisterGetSelection` callback pattern.)
 
@@ -101,7 +112,7 @@ Uses `html2canvas` + `jspdf` (dynamically imported to avoid bundle bloat). Each 
 Intercepts every ProseMirror transaction. Skips transactions where both inserted and deleted text are empty (e.g. Enter key). Tags events with `origin` and `edit_type` from transaction meta. Calls `onEvent` callback with a `RawProvenanceEvent`.
 
 ### `HeatmapExtension`
-Decorates text with CSS classes based on authorship. Toggle state stored in a ProseMirror plugin key (`heatmapKey`). Each decoration maps `(origin, edit_type)` to a class like `heatmap-span--human-grammar-fix`. Two decoration sources: (1) **backend-loaded** — `loadHeatmap` command accepts a `DecorationSet` built from replayed provenance events fetched via `GET /timeline/{doc_id}/heatmap`, covering all historical edits; (2) **live-tracked** — new edits in the current session are decorated immediately via `ReplaceStep` interception. The Heat button in EditorPanel is async: on toggle-on it flushes pending events, fetches heatmap spans, builds decorations with `buildDecorationsFromSpans()`, then dispatches `loadHeatmap`.
+**Currently disabled** — commented out of the editor extensions in `EditorPanel.tsx`. The extension exists in `HeatmapExtension.ts` but is not active. Decorates text with CSS classes based on authorship. Toggle state stored in a ProseMirror plugin key (`heatmapKey`). Each decoration maps `(origin, edit_type)` to a class like `heatmap-span--human-grammar-fix`. Two decoration sources: (1) **backend-loaded** — `loadHeatmap` command accepts a `DecorationSet` built from replayed provenance events fetched via `GET /timeline/{doc_id}/heatmap`, covering all historical edits; (2) **live-tracked** — new edits in the current session are decorated immediately via `ReplaceStep` interception.
 
 ### `classifier.ts`
 Frontend classifier that assigns `edit_type` to human edits before they're sent to the backend, providing an initial classification that the backend may override.
