@@ -62,32 +62,38 @@ def extract_text(node: dict) -> str:
 # because the model is trained to fill tool inputs faithfully.
 SUGGESTION_TOOL: dict = {
     "name": "record_suggestions",
-    "description": "Record a list of editing suggestions for the document.",
+    "description": "Record a list of editing suggestions and observations for the document.",
     "input_schema": {
         "type": "object",
         "properties": {
             "suggestions": {
                 "type": "array",
-                "description": "The editing suggestions, ordered by importance.",
+                "description": "Editing suggestions and observations, ordered by importance.",
                 "items": {
                     "type": "object",
                     "properties": {
                         "original_text": {
                             "type": "string",
                             "description": (
-                                "The EXACT verbatim text from the document that should "
-                                "be changed — copy it character-for-character."
+                                "For specific edits: the EXACT verbatim text from the document "
+                                "to change — copy it character-for-character. "
+                                "For observations: leave this empty string."
                             ),
                         },
                         "suggested_text": {
                             "type": "string",
-                            "description": "The replacement text.",
+                            "description": (
+                                "For specific edits: the replacement text. "
+                                "For observations: leave this empty string."
+                            ),
                         },
                         "rationale": {
                             "type": "string",
                             "description": (
-                                "A brief, specific explanation of why this change "
-                                "improves the writing — not just what it does."
+                                "A specific explanation of the issue or improvement. "
+                                "For observations, name the concrete problem "
+                                "(e.g. 'paragraph 3 introduces a claim not supported by paragraph 2') "
+                                "rather than giving generic advice."
                             ),
                         },
                         "edit_type": {
@@ -96,11 +102,16 @@ SUGGESTION_TOOL: dict = {
                                 "grammar_fix",
                                 "wording_change",
                                 "organizational_move",
+                                "observation",
                             ],
                             "description": (
                                 "grammar_fix: spelling/punctuation/grammar correction. "
                                 "wording_change: clarity, tone, or flow improvement. "
-                                "organizational_move: restructuring or reordering text."
+                                "organizational_move: restructuring or reordering text. "
+                                "observation: a holistic insight about structure, flow, "
+                                "argument coherence, or tone that can't be expressed as "
+                                "a single text substitution — use empty strings for "
+                                "original_text and suggested_text."
                             ),
                         },
                     },
@@ -117,14 +128,16 @@ SUGGESTION_TOOL: dict = {
     },
 }
 
-SYSTEM_PROMPT = """You are a thoughtful writing editor. Your job is to suggest specific, targeted improvements to the document the user provides.
+SYSTEM_PROMPT = """You are a thoughtful writing editor. Analyze the document holistically and return a mix of specific edits and high-level observations.
+
+Types of feedback:
+- **Specific edits** (grammar_fix, wording_change, organizational_move): targeted text changes. Cite EXACT verbatim text as original_text — copy it character-for-character. Change only what needs changing, not whole paragraphs.
+- **Observations** (observation): holistic insights about structure, argument flow, coherence, or tone consistency that can't be expressed as a single text substitution. Leave original_text and suggested_text as empty strings.
 
 Guidelines:
-- Suggest 3–5 improvements, prioritizing the most impactful changes.
-- Each suggestion must cite an EXACT verbatim excerpt from the document as `original_text` — copy it character-for-character, including punctuation. Do not paraphrase or shorten it.
-- Keep suggestions focused: change only what needs changing, not whole paragraphs.
-- Be specific in your rationale: explain *why* this change improves the writing.
-- Prefer targeted word or phrase changes over wholesale rewrites."""
+- Return 3–6 items total, mixing specific edits and observations based on what's most useful for this document.
+- Prioritize the most impactful feedback first.
+- Be concrete in rationales: explain *why* something is an issue, not just what it is."""
 
 
 # ── Chat endpoint ─────────────────────────────────────────────────────────────

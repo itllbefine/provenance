@@ -41,6 +41,7 @@ const EDIT_TYPE_LABEL: Record<Suggestion['edit_type'], string> = {
   grammar_fix: 'Grammar',
   wording_change: 'Wording',
   organizational_move: 'Structure',
+  observation: 'Insight',
 }
 
 export default function SuggestionsPanel({
@@ -107,17 +108,23 @@ export default function SuggestionsPanel({
                 {EDIT_TYPE_LABEL[s.edit_type]}
               </span>
             </div>
-            <div className="suggestion-card__diff">
-              <DiffView original={s.original_text} suggested={s.suggested_text} />
-            </div>
+            {s.edit_type === 'observation' ? (
+              <div className="suggestion-observation">{s.rationale}</div>
+            ) : (
+              <div className="suggestion-card__diff">
+                <DiffView original={s.original_text} suggested={s.suggested_text} />
+              </div>
+            )}
             <div className="suggestion-card__actions">
-              <button
-                className="suggestion-action suggestion-action--accept"
-                onClick={(e) => { e.stopPropagation(); onAccept(i) }}
-                title="Accept this suggestion"
-              >
-                Accept
-              </button>
+              {s.edit_type !== 'observation' && (
+                <button
+                  className="suggestion-action suggestion-action--accept"
+                  onClick={(e) => { e.stopPropagation(); onAccept(i) }}
+                  title="Accept this suggestion"
+                >
+                  Accept
+                </button>
+              )}
               <button
                 className="suggestion-action suggestion-action--dismiss"
                 onClick={(e) => { e.stopPropagation(); onDismiss(i) }}

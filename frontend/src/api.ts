@@ -55,7 +55,7 @@ export interface Suggestion {
   original_text: string
   suggested_text: string
   rationale: string
-  edit_type: 'grammar_fix' | 'wording_change' | 'organizational_move'
+  edit_type: 'grammar_fix' | 'wording_change' | 'organizational_move' | 'observation'
 }
 
 export async function flushProvenanceEvents(

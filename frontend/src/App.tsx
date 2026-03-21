@@ -169,7 +169,9 @@ export default function App() {
 
   function handleDismiss(index: number) {
     const suggestion = suggestions[index]
-    if (suggestion) {
+    // Observations have no original_text to track; only add dismissals for
+    // specific edits so they don't pollute the dismissed list.
+    if (suggestion?.original_text) {
       setDismissed((prev) => [...prev, suggestion.original_text])
     }
     removeSuggestion(index)

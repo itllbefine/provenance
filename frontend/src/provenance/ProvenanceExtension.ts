@@ -2,7 +2,6 @@ import { Extension } from '@tiptap/core'
 import { ReplaceStep } from '@tiptap/pm/transform'
 import DiffMatchPatch from 'diff-match-patch'
 import type { RawProvenanceEvent, Suggestion } from '../api'
-import { classifyHumanEdit } from './classifier'
 
 const dmp = new DiffMatchPatch()
 
@@ -119,10 +118,9 @@ export const ProvenanceExtension = Extension.create<ProvenanceOptions>({
             ? 'delete'
             : 'insert'
 
-      // For AI suggestions the edit_type is known from the meta. For human
-      // edits, apply the rule-based classifier. Ambiguous cases (null) are
-      // sent to the backend, which calls Claude to fill them in.
-      const edit_type = aiMeta?.edit_type ?? classifyHumanEdit(insertedText, deletedText)
+      // For AI suggestions the edit_type is known from the meta. Human edits
+      // are stored without a subtype — classification is disabled.
+      const edit_type = aiMeta?.edit_type ?? null
 
       // For human edits with enough content, check if the inserted text
       // closely matches any currently visible suggestion. If so, tag the

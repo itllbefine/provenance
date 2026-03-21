@@ -130,6 +130,19 @@
   color: #7e22ce;
 }
 
+.suggestion-badge--observation {
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+/* ── Observation text ── */
+
+.suggestion-observation {
+  font-size: 13px;
+  line-height: 1.55;
+  color: #3a3a38;
+}
+
 /* ── Inline diff ── */
 
 .suggestion-diff {
