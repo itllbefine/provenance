@@ -10,6 +10,7 @@ export type SaveStatus = 'saved' | 'saving' | 'unsaved' | 'error'
 
 export default function App() {
   const [doc, setDoc] = useState<Document | null>(null)
+  const [allDocs, setAllDocs] = useState<Document[]>([])
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved')
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -31,15 +32,17 @@ export default function App() {
   // Set by EditorPanel's onSelectionChange; cleared on send or doc switch.
   const [activeSelection, setActiveSelection] = useState<string | null>(null)
 
-  // On first render, load the most recent document or create a new one
+  // On first render, load all documents; open the most recent or create a new one
   useEffect(() => {
     async function loadInitialDocument() {
       try {
         const docs = await listDocuments()
         if (docs.length > 0) {
+          setAllDocs(docs)
           setDoc(docs[0])
         } else {
           const newDoc = await createDocument()
+          setAllDocs([newDoc])
           setDoc(newDoc)
         }
       } catch (err) {
@@ -49,6 +52,25 @@ export default function App() {
     loadInitialDocument()
   }, [])
 
+  async function handleNewDocument() {
+    try {
+      const newDoc = await createDocument()
+      setAllDocs((prev) => [newDoc, ...prev])
+      setDoc(newDoc)
+      setSaveStatus('saved')
+    } catch (err) {
+      console.error('Failed to create document:', err)
+    }
+  }
+
+  function handleSwitchDocument(target: Document) {
+    if (target.id === doc?.id) return
+    // Cancel any pending save for the current doc
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    setDoc(target)
+    setSaveStatus('saved')
+  }
+
   // Called by EditorPanel whenever the title or content changes.
   // Debounced: waits 1.5s after the last keystroke before saving.
   const handleChange = useCallback(
@@ -57,6 +79,8 @@ export default function App() {
 
       // Update local state immediately so the UI feels responsive
       setDoc((prev) => (prev ? { ...prev, title, content } : prev))
+      // Also keep the title in sync in the doc list
+      setAllDocs((prev) => prev.map((d) => (d.id === doc.id ? { ...d, title } : d)))
       setSaveStatus('unsaved')
 
       // Cancel any pending save and schedule a new one
@@ -166,6 +190,21 @@ export default function App() {
 
   return (
     <div className="app-layout">
+      <div className="doc-list-panel">
+        <button className="doc-list-new" onClick={() => void handleNewDocument()}>+ New</button>
+        <ul className="doc-list">
+          {allDocs.map((d) => (
+            <li
+              key={d.id}
+              className={`doc-list-item${d.id === doc?.id ? ' doc-list-item--active' : ''}`}
+              onClick={() => handleSwitchDocument(d)}
+              title={d.title || 'Untitled'}
+            >
+              {d.title || 'Untitled'}
+            </li>
+          ))}
+        </ul>
+      </div>
       <div className="left-panel">
         <div className="left-top">
           <SuggestionsPanel
@@ -217,3 +256,4 @@ export default function App() {
     </div>
   )
 }
+
