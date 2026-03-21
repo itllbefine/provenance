@@ -105,6 +105,95 @@
   color: #bbb;
 }
 
+/* ── Title row + doc-picker ── */
+
+.title-row {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.doc-picker-trigger {
+  position: absolute;
+  top: 22px;
+  left: 14px;
+  padding: 2px 5px;
+  font-size: 13px;
+  line-height: 1;
+  color: #bbb;
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+
+.doc-picker-trigger:hover {
+  background: #ebe8e3;
+  color: #555;
+}
+
+.doc-picker-dropdown {
+  position: absolute;
+  top: 52px;
+  left: 14px;
+  z-index: 100;
+  background: #fff;
+  border: 1px solid #e0ddd8;
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.10);
+  min-width: 200px;
+  max-width: 320px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.doc-picker-new {
+  padding: 9px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  border: none;
+  border-bottom: 1px solid #e8e5e0;
+  background: #fafaf8;
+  color: #555;
+  cursor: pointer;
+}
+
+.doc-picker-new:hover {
+  background: #f0ede8;
+  color: #222;
+}
+
+.doc-picker-item {
+  padding: 8px 14px;
+  font-size: 13px;
+  text-align: left;
+  border: none;
+  border-bottom: 1px solid #f0ede8;
+  background: #fff;
+  color: #444;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.doc-picker-item:last-child {
+  border-bottom: none;
+}
+
+.doc-picker-item:hover {
+  background: #f5f2ed;
+  color: #1a1a18;
+}
+
+.doc-picker-item--active {
+  font-weight: 600;
+  color: #1a1a18;
+  background: #eee9e1;
+}
+
 /* ── Title input ── */
 
 .document-title {

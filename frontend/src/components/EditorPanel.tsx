@@ -2,7 +2,7 @@ import { EditorContent, useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 // import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { RawProvenanceEvent, Suggestion } from '../api'
+import type { Document, RawProvenanceEvent, Suggestion } from '../api'
 import { flushProvenanceEvents } from '../api'
 import { ProvenanceExtension } from '../provenance/ProvenanceExtension'
 // import { HeatmapExtension, heatmapKey, spanCssClass } from '../provenance/HeatmapExtension'
@@ -17,6 +17,9 @@ interface Props {
   initialTitle: string
   initialContent: string
   initialContext: string
+  allDocs: Document[]
+  onNewDocument: () => void
+  onSwitchDocument: (doc: Document) => void
   onChange: (title: string, content: string) => void
   onContextChange: (context: string) => void
   saveStatus: SaveStatus
@@ -109,6 +112,9 @@ export default function EditorPanel({
   initialTitle,
   initialContent,
   initialContext,
+  allDocs,
+  onNewDocument,
+  onSwitchDocument,
   onChange,
   onContextChange,
   saveStatus,
@@ -122,6 +128,8 @@ export default function EditorPanel({
   const [showDebug, setShowDebug] = useState(false)
   const [showYouness, setShowYouness] = useState(false)
   const [showTimeline, setShowTimeline] = useState(false)
+  const [showDocPicker, setShowDocPicker] = useState(false)
+  const docPickerRef = useRef<HTMLDivElement>(null)
   // const [heatmapLoading, setHeatmapLoading] = useState(false)
 
   // Refs to prevent stale closures in editor callbacks.
@@ -181,6 +189,18 @@ export default function EditorPanel({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Close the doc-picker when the user clicks outside of it.
+  useEffect(() => {
+    if (!showDocPicker) return
+    function handleClickOutside(e: MouseEvent) {
+      if (docPickerRef.current && !docPickerRef.current.contains(e.target as Node)) {
+        setShowDocPicker(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [showDocPicker])
 
   // Configure the provenance extension once. useMemo with [] means this
   // object is created once on mount and never re-created. The callback
@@ -461,12 +481,40 @@ export default function EditorPanel({
         </div>
       )}
 
-      <input
-        className="document-title"
-        value={title}
-        onChange={handleTitleChange}
-        placeholder="Untitled"
-      />
+      <div className="title-row" ref={docPickerRef}>
+        <button
+          className="doc-picker-trigger"
+          onClick={() => setShowDocPicker((v) => !v)}
+          title="Switch document"
+        >
+          ▾
+        </button>
+        {showDocPicker && (
+          <div className="doc-picker-dropdown">
+            <button
+              className="doc-picker-new"
+              onClick={() => { onNewDocument(); setShowDocPicker(false) }}
+            >
+              + New document
+            </button>
+            {allDocs.map((d) => (
+              <button
+                key={d.id}
+                className={`doc-picker-item${d.id === documentId ? ' doc-picker-item--active' : ''}`}
+                onClick={() => { onSwitchDocument(d); setShowDocPicker(false) }}
+              >
+                {d.title || 'Untitled'}
+              </button>
+            ))}
+          </div>
+        )}
+        <input
+          className="document-title"
+          value={title}
+          onChange={handleTitleChange}
+          placeholder="Untitled"
+        />
+      </div>
 
       <EditorContent editor={editor} className="editor-content" />
 

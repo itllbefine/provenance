@@ -192,21 +192,6 @@ export default function App() {
 
   return (
     <div className="app-layout">
-      <div className="doc-list-panel">
-        <button className="doc-list-new" onClick={() => void handleNewDocument()}>+ New</button>
-        <ul className="doc-list">
-          {allDocs.map((d) => (
-            <li
-              key={d.id}
-              className={`doc-list-item${d.id === doc?.id ? ' doc-list-item--active' : ''}`}
-              onClick={() => handleSwitchDocument(d)}
-              title={d.title || 'Untitled'}
-            >
-              {d.title || 'Untitled'}
-            </li>
-          ))}
-        </ul>
-      </div>
       <div className="left-panel">
         <div className="left-top">
           <SuggestionsPanel
@@ -247,6 +232,9 @@ export default function App() {
           initialTitle={doc.title}
           initialContent={doc.content}
           initialContext={doc.context}
+          allDocs={allDocs}
+          onNewDocument={() => void handleNewDocument()}
+          onSwitchDocument={handleSwitchDocument}
           onChange={handleChange}
           onContextChange={handleContextChange}
           saveStatus={saveStatus}

@@ -4,61 +4,6 @@
   overflow: hidden;
 }
 
-.doc-list-panel {
-  width: 180px;
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  border-right: 1px solid #e0ddd8;
-  background: #e8e5e0;
-  overflow: hidden;
-}
-
-.doc-list-new {
-  flex-shrink: 0;
-  margin: 10px 10px 6px;
-  padding: 6px 10px;
-  background: #555;
-  color: #fff;
-  border: none;
-  border-radius: 4px;
-  font-size: 13px;
-  cursor: pointer;
-  text-align: left;
-}
-
-.doc-list-new:hover {
-  background: #333;
-}
-
-.doc-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  overflow-y: auto;
-  flex: 1;
-}
-
-.doc-list-item {
-  padding: 8px 12px;
-  font-size: 13px;
-  cursor: pointer;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  color: #444;
-  border-bottom: 1px solid #dedad4;
-}
-
-.doc-list-item:hover {
-  background: #dedad4;
-}
-
-.doc-list-item--active {
-  background: #d0ccc5;
-  font-weight: 600;
-  color: #222;
-}
 
 .left-panel {
   width: 340px;
