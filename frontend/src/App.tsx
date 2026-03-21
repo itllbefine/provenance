@@ -27,6 +27,9 @@ export default function App() {
   // EditorPanel registers its applyEdit function here so App can call it
   // when the user accepts a suggestion.
   const applyEditRef = useRef<((original: string, suggested: string, editType: string, origin?: string) => boolean) | null>(null)
+  // EditorPanel registers its flushEvents function so we can flush
+  // pending provenance events before generating suggestions.
+  const flushEventsRef = useRef<(() => Promise<void>) | null>(null)
 
   // Persisted editor selection — survives focus moving to the chat input.
   // Set by EditorPanel's onSelectionChange; cleared on send or doc switch.
@@ -135,6 +138,8 @@ export default function App() {
     setSuggestions([])
     setFocusedIndex(null)
     try {
+      // Flush pending provenance events so the snapshot is complete.
+      await flushEventsRef.current?.()
       const results = await generateSuggestions(doc.id, dismissed, suggestionModel)
       setSuggestions(results)
       if (results.length > 0) setFocusedIndex(0)
@@ -239,6 +244,7 @@ export default function App() {
           onContextChange={handleContextChange}
           saveStatus={saveStatus}
           onRegisterApplyEdit={(fn) => { applyEditRef.current = fn }}
+          onRegisterFlushEvents={(fn) => { flushEventsRef.current = fn }}
           onSelectionChange={setActiveSelection}
           getSuggestions={() => suggestions}
         />

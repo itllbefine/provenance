@@ -4,7 +4,7 @@ description: Full current state of the Provenance app: all 7 phases plus collabo
 type: project
 ---
 
-All 7 phases from PROMPT.md are complete, plus an additional collaborative chat feature. Last updated 2026-03-20.
+All 7 phases from PROMPT.md are complete, plus an additional collaborative chat feature. Last updated 2026-03-21.
 
 ## App layout
 
@@ -35,7 +35,8 @@ Migrations for new columns use `ALTER TABLE … ADD COLUMN` wrapped in try/excep
 | `documents` | id (UUID), title, content (ProseMirror JSON string), context (user-supplied purpose/tone), created_at, updated_at |
 | `provenance_events` | append-only edit log: event_type, origin, edit_type, position, length, text_delta, author, timestamp, metadata (JSON) |
 | `style_samples` | uploaded baseline writing samples for You-ness scoring |
-| `text_snapshots` | periodic plain-text snapshots per document — used for timeline feature |
+| `text_snapshots` | periodic plain-text snapshots per document (legacy, unused) |
+| `timeline_snapshots` | snapshots captured on Suggest clicks or manually — stores provenance-tagged spans as JSON, optional `label` column for custom names |
 | `provenance_spans` | legacy spans table (not actively used by current routes) |
 
 `origin` values: `'human' | 'human_edit' | 'ai_generated' | 'ai_modified' | 'ai_influenced' | 'ai_collaborative'`
@@ -68,7 +69,10 @@ Edit types: `grammar_fix`, `wording_change`, `organizational_move`.
 
 ### `timeline.py` — `/timeline` (also mounted at `/documents/{id}/timeline`)
 - `GET /timeline/{doc_id}/heatmap` — replays all provenance events and returns the final (100%) provenance-tagged spans for the live editor heatmap.
-- `GET /timeline/{doc_id}` — returns 4 milestone snapshots (25/50/75/100%) with provenance-tagged spans for the timeline view.
+- `GET /timeline/{doc_id}` — returns stored snapshots (Suggest-click and manual, each with `id` field) plus a live "Current" snapshot (id=null) computed by replaying all events.
+- `POST /timeline/{doc_id}/snapshot` — creates a manual snapshot labeled with the current timestamp (e.g. "Snapshot — Mar 21, 3:45 PM").
+- `DELETE /timeline/snapshot/{snapshot_id}` — deletes a stored timeline snapshot by id.
+- `create_snapshot(db, doc_id, label=None)` — helper called by `suggestions.py` (label=None → "Suggest N") or by the manual snapshot endpoint (with custom label). Replays provenance events, stores the result in `timeline_snapshots` table.
 
 ### `classify.py`
 Classifies human edits into `human_grammar_fix`, `human_wording_change`, or `human_organizational_move`. Rule-based for simple cases; calls Claude Sonnet for ambiguous replacements.
@@ -76,12 +80,16 @@ Classifies human edits into `human_grammar_fix`, `human_wording_change`, or `hum
 ## Frontend components
 
 ### `App.tsx`
-Top-level state: current document (`doc`), full document list (`allDocs`), save status, suggestions list, dismissed suggestions, focused suggestion index, document context, model selector, `activeSelection` (persisted editor selection string or null). Debounced save (1.5s content/title, 1s context). Dismissed suggestions and `activeSelection` reset on document switch. Wires `applyEdit` ref and `onSelectionChange` to EditorPanel; passes `activeSelection` + `onClearSelection` to RationalePanel.
+Top-level state: current document (`doc`), full document list (`allDocs`), save status, suggestions list, dismissed suggestions, focused suggestion index, document context, model selector, `activeSelection` (persisted editor selection string or null). Debounced save (1.5s content/title, 1s context). Dismissed suggestions and `activeSelection` reset on document switch. Wires `applyEdit` ref, `flushEvents` ref, and `onSelectionChange` to EditorPanel; passes `activeSelection` + `onClearSelection` to RationalePanel. `handleGenerate` flushes pending provenance events before calling `generateSuggestions`.
 
 Document management: `handleNewDocument()` calls `createDocument()`, prepends to `allDocs`, and switches to the new doc. `handleSwitchDocument(doc)` cancels any pending save timer and switches to the selected doc. `handleChange` also updates the title in `allDocs` in real time so the list stays in sync.
 
 ### `EditorPanel.tsx`
-TipTap editor with toolbar (Bold, Italic, H1–H3, lists, blockquote, Log, Score, Timeline, Context). The **Heat button is commented out** — `HeatmapExtension`, `handleHeatmapToggle`, `buildDecorationsFromSpans`, and related imports are all commented out pending a fix. Collapsible context panel (textarea). Registers `applyEdit` callback via ref. Provenance events buffered in a ref and flushed to backend every 2s (and on unmount). `left-bottom` in App.css uses `overflow: hidden` so RationalePanel controls its own scroll.
+TipTap editor with toolbar (Bold, Italic, H1–H3, lists, blockquote, Log, Score, Timeline, Snapshot, Context, Attribution, word count). The **Heat button is commented out** — `HeatmapExtension`, `handleHeatmapToggle`, `buildDecorationsFromSpans`, and related imports are all commented out pending a fix. Collapsible context panel (textarea). Registers `applyEdit` and `flushEvents` callbacks via refs. Provenance events buffered in a ref and flushed to backend every 2s (and on unmount). Word count displayed in toolbar to the left of the save indicator. `left-bottom` in App.css uses `overflow: hidden` so RationalePanel controls its own scroll.
+
+**Manual Snapshot button**: flushes pending provenance events then calls `POST /timeline/{doc_id}/snapshot` to capture a snapshot labeled with the current timestamp (e.g. "Snapshot — Mar 21, 3:45 PM").
+
+**Manual Attribution button**: toolbar dropdown (enabled only when text is selected) that lets users override the provenance tag for selected text. Options: human, ai_generated, ai_modified, ai_collaborative, ai_influenced. Pushes a synthetic `replace` provenance event (same text as both inserted and deleted) to `pendingEventsRef` so the tag change is recorded without modifying document content.
 
 Accepts `onSelectionChange?: (text: string | null) => void` — fires with selected text when the user makes a non-empty selection while the editor is focused, or `null` when they place the cursor without selecting. Does NOT fire on blur, so the stored selection survives focus moving to the chat input. (Replaced the old `onRegisterGetSelection` callback pattern.)
 
@@ -100,11 +108,11 @@ Toggled by "Log" button. Shows raw provenance event log for the current document
 Modal for you-ness score display (0–100, explanation, human/AI authorship %) + baseline sample management (upload, list, delete).
 
 ### `TimelineModal.tsx`
-Modal showing document timeline with snapshots and diffs. Has a **color key bar** (between header and body) with two groups — Human and AI — each listing the four edit-type swatches. Has an **Export** button in the header that generates:
-- 25%, 50%, 75% milestones → individual PNG files (`timeline-25pct.png`, etc.) with heatmap colors visible but text blurred (`filter: blur(4px)` on the body), showing authorship pattern without revealing content
-- 100% milestone → `timeline-100pct.pdf` with full readable text
+Modal showing document timeline with Suggest-click snapshots, manual snapshots, and live "Current" snapshot. Each non-Current snapshot has a **delete button (X)** with a confirmation dialog. Has a **color key bar** (AI group only — human edits are not highlighted). Has an **Export** button that generates:
+- `timeline.png` — single PNG with all snapshots as a thumbnail grid. Non-Current cards are blurred via canvas API. Layout adapts to content: ~900px CSS target width, font scales with card width. Color key legend drawn at the bottom.
+- `timeline-current.pdf` — PDF with real selectable text rendered via jsPDF (`times` font). Provenance highlight colors drawn as merged background rects (continuous per run, not per-word). Color key legend on each page.
 
-Uses `html2canvas` + `jspdf` (dynamically imported to avoid bundle bloat). Each export card is rendered off-screen at 2× scale for retina quality.
+Uses `html2canvas` for PNG cards + `jspdf` for PDF (dynamically imported). Shared `LEGEND_ITEMS` array for UI, PNG, and PDF color keys. `spanPdfBg()` blends RGB against white at 30% alpha for opaque PDF backgrounds.
 
 ## TipTap extensions
 
@@ -126,4 +134,5 @@ Frontend classifier that assigns `edit_type` to human edits before they're sent 
 - Conversation history is stateless on backend — full history sent with each chat request
 - Context for chat captured at send time (not reactively) to avoid re-render churn
 - Editor content stored as ProseMirror JSON string in SQLite
-- Timeline uses periodic text snapshots (not full event replay)
+- Timeline snapshots are triggered by Suggest clicks or manually via toolbar button. Frontend flushes pending provenance events before creating a snapshot. Manual snapshots get a timestamp label; Suggest snapshots get "Suggest N". Snapshots can be deleted from the timeline modal (except the live "Current" one).
+- Human edits (`human_edit` origin) are NOT highlighted in the timeline — only AI origins get colored spans

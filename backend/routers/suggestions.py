@@ -14,6 +14,7 @@ from models import (
     SuggestionRequest,
     SuggestionResponse,
 )
+from routers.timeline import create_snapshot
 
 router = APIRouter(prefix="/suggestions", tags=["suggestions"])
 
@@ -346,6 +347,9 @@ async def generate_suggestions(
             status_code=422,
             detail=f"Invalid model. Allowed values: {', '.join(sorted(ALLOWED_SUGGESTION_MODELS))}",
         )
+
+    # Capture a timeline snapshot before generating suggestions.
+    await create_snapshot(db, body.document_id)
 
     client = get_client()
 

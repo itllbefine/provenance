@@ -89,9 +89,10 @@ class TimelineSpan(BaseModel):
 
 
 class TimelineMilestone(BaseModel):
-    milestone: float       # 0.25, 0.50, 0.75, or 1.00
-    event_count: int       # number of events included up to this milestone
-    timestamp: str         # ISO 8601 timestamp of the last event in this window
+    id: Optional[str] = None  # snapshot DB id (null for the live "Current" snapshot)
+    label: str             # "Suggest 1", "Snapshot — …", or "Current"
+    event_count: int       # number of provenance events at this snapshot
+    timestamp: str         # ISO 8601 timestamp of the snapshot
     spans: list[TimelineSpan]
 
 

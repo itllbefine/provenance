@@ -147,7 +147,8 @@ export interface TimelineSpan {
 }
 
 export interface TimelineMilestone {
-  milestone: number     // 0.25, 0.50, 0.75, or 1.00
+  id: string | null     // snapshot DB id (null for live "Current")
+  label: string         // "Suggest 1", "Snapshot — …", or "Current"
   event_count: number
   timestamp: string     // ISO 8601
   spans: TimelineSpan[]
@@ -164,6 +165,22 @@ export async function getHeatmapSpans(docId: string): Promise<TimelineSpan[]> {
     throw new Error(body.detail ?? `Failed to load heatmap: ${res.statusText}`)
   }
   return res.json() as Promise<TimelineSpan[]>
+}
+
+export async function createManualSnapshot(docId: string): Promise<void> {
+  const res = await fetch(`${BASE}/timeline/${docId}/snapshot`, { method: 'POST' })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({})) as { detail?: string }
+    throw new Error(body.detail ?? `Failed to create snapshot: ${res.statusText}`)
+  }
+}
+
+export async function deleteSnapshot(snapshotId: string): Promise<void> {
+  const res = await fetch(`${BASE}/timeline/snapshot/${snapshotId}`, { method: 'DELETE' })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({})) as { detail?: string }
+    throw new Error(body.detail ?? `Failed to delete snapshot: ${res.statusText}`)
+  }
 }
 
 export async function getTimeline(docId: string): Promise<TimelineResponse> {

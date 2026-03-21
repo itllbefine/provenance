@@ -79,6 +79,19 @@ async def init_db() -> None:
             )
         """)
 
+        # Snapshots captured each time the user clicks "Suggest".
+        # Each row stores the provenance-tagged spans as a JSON array.
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS timeline_snapshots (
+                id              TEXT PRIMARY KEY,
+                document_id     TEXT NOT NULL REFERENCES documents(id),
+                snapshot_number INTEGER NOT NULL,
+                event_count     INTEGER NOT NULL,
+                timestamp       TEXT NOT NULL,
+                spans           TEXT NOT NULL DEFAULT '[]'
+            )
+        """)
+
         await db.commit()
 
     # Add origin/edit_type columns to provenance_events if they don't exist yet.
@@ -88,6 +101,7 @@ async def init_db() -> None:
         "ALTER TABLE provenance_events ADD COLUMN origin TEXT NOT NULL DEFAULT 'human'",
         "ALTER TABLE provenance_events ADD COLUMN edit_type TEXT",
         "ALTER TABLE documents ADD COLUMN context TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE timeline_snapshots ADD COLUMN label TEXT",
     ]:
         try:
             async with aiosqlite.connect(DB_PATH) as _db:

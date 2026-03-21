@@ -1,16 +1,16 @@
 """
-Timeline snapshots — Phase 7.
+Timeline snapshots — triggered by Suggest clicks.
 
-Endpoint:
-  GET /timeline/{doc_id}   — compute 4 milestone snapshots of document history
+Endpoints:
+  GET  /timeline/{doc_id}   — return stored snapshots + live "Current" snapshot
+  GET  /timeline/{doc_id}/heatmap — provenance-tagged spans for the full document
 
-The endpoint replays the stored provenance events in chronological order to
-reconstruct what the document looked like at four milestones:
-approximately the 25th, 50th, 75th, and 100th percentile of editing activity
-(measured by event count, not wall-clock time).
+Snapshots are created each time the user clicks "Suggest" (via the helper
+create_snapshot(), called from the suggestions router).  Each snapshot
+captures the document's provenance-tagged state at that moment.
 
-Each snapshot is returned as a list of provenance-tagged text spans, ready
-for the frontend to render as a mini heatmap.
+The GET endpoint returns all stored snapshots in order, plus a live "Current"
+snapshot computed by replaying all provenance events.
 
 Position replay
 ---------------
@@ -30,6 +30,10 @@ buffer (which happens when the user pressed Enter without generating a
 text-change provenance event).
 """
 
+import json
+import uuid
+from datetime import datetime, timezone
+
 import aiosqlite
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -42,75 +46,44 @@ router = APIRouter(prefix="/timeline", tags=["timeline"])
 _DocBuffer = list[tuple[str, str, str | None]]
 
 
-# ── Position helpers ──────────────────────────────────────────────────────────
+# -- Position helpers ----------------------------------------------------------
 
 
 def _pm_end(doc: _DocBuffer) -> int:
-    """
-    Return the PM position just past the last token in the buffer.
-
-    Derivation:
-      - PM pos 1 is the start of the first paragraph (after the implicit
-        first-paragraph-open token).
-      - Each regular character costs 1 PM token.
-      - Each '\\n' boundary costs 2 PM tokens (paragraph-close + paragraph-open).
-    """
+    """Return the PM position just past the last token in the buffer."""
     text_chars = sum(1 for ch, _, _ in doc if ch != "\n")
     newlines = sum(1 for ch, _, _ in doc if ch == "\n")
     return 1 + text_chars + 2 * newlines
 
 
 def _pm_to_text(pm_pos: int, doc: _DocBuffer) -> int:
-    """
-    Walk the buffer and return the text-buffer index for *pm_pos*.
-
-    We start the PM counter at 1 (= inside the first paragraph, before the
-    first character) and advance it by 1 for each regular character and by 2
-    for each '\\n' separator.  The first index where cur_pm >= pm_pos is
-    the insertion point.  Returns len(doc) if pm_pos is at or past the end.
-    """
+    """Walk the buffer and return the text-buffer index for *pm_pos*."""
     cur_pm = 1
     for i, (ch, _, _) in enumerate(doc):
         if cur_pm >= pm_pos:
             return i
         if ch == "\n":
-            cur_pm += 2  # paragraph boundary = 2 PM tokens
+            cur_pm += 2
         else:
-            cur_pm += 1  # regular character = 1 PM token
+            cur_pm += 1
     return len(doc)
 
 
-# ── Event application ─────────────────────────────────────────────────────────
+# -- Event application ---------------------------------------------------------
 
 
 def _apply_event(doc: _DocBuffer, event: dict) -> None:
-    """
-    Apply one provenance event to the text buffer.
-
-    Steps:
-    1. Fill in any missing '\\n' paragraph separators when the PM position
-       lies past the current end of the buffer (handles Enter presses that
-       don't generate a text-change event in ProvenanceExtension).
-    2. Convert PM from/to positions to text-buffer indices.
-    3. Delete the replaced range (may be empty for pure inserts).
-    4. Insert the new characters with their provenance metadata.
-    """
+    """Apply one provenance event to the text buffer."""
     from_pm = event["from_pos"]
     to_pm = event["to_pos"]
     origin = event.get("origin") or "human"
     edit_type = event.get("edit_type")
     inserted = event.get("inserted_text") or ""
 
-    # Backward compat: old events stored origin='human' for all human typing.
-    # Upgrade replace events (something was deleted AND something inserted) to
-    # 'human_edit' so the heatmap colors them correctly.
     deleted = event.get("deleted_text") or ""
     if origin == "human" and inserted and deleted:
         origin = "human_edit"
 
-    # Fill in paragraph separators if the PM position is past the buffer end.
-    # Each fill adds one '\\n', which accounts for 2 missing PM tokens
-    # (a paragraph-close and the following paragraph-open).
     pm_end = _pm_end(doc)
     while from_pm > pm_end:
         doc.append(("\n", "boundary", None))
@@ -119,27 +92,19 @@ def _apply_event(doc: _DocBuffer, event: dict) -> None:
     from_text = _pm_to_text(from_pm, doc)
     to_text = _pm_to_text(to_pm, doc)
 
-    # Defensive clamp: should never be needed, but avoids crashes on corrupt data.
     from_text = min(from_text, len(doc))
     to_text = min(to_text, len(doc))
 
-    # Delete the replaced range, then insert new characters.
     del doc[from_text:to_text]
     new_chars: _DocBuffer = [(ch, origin, edit_type) for ch in inserted]
     doc[from_text:from_text] = new_chars
 
 
-# ── Span compression ──────────────────────────────────────────────────────────
+# -- Span compression ---------------------------------------------------------
 
 
 def _compress(doc: _DocBuffer) -> list[dict]:
-    """
-    Merge consecutive characters that share the same (origin, edit_type) into
-    a single span dict: {text, origin, edit_type}.
-
-    This reduces the payload size sent to the frontend — a run of 500 human-
-    typed characters becomes one span instead of 500 individual objects.
-    """
+    """Merge consecutive characters with the same provenance into spans."""
     if not doc:
         return []
 
@@ -159,27 +124,15 @@ def _compress(doc: _DocBuffer) -> list[dict]:
     return spans
 
 
-# ── Route ─────────────────────────────────────────────────────────────────────
+# -- Replay helper (shared by snapshot creation and endpoints) -----------------
 
 
-@router.get("/{doc_id}/heatmap", response_model=list[TimelineSpan])
-async def get_heatmap(
-    doc_id: str,
-    db: aiosqlite.Connection = Depends(get_db),
-):
+async def _replay_events(
+    db: aiosqlite.Connection, doc_id: str
+) -> tuple[_DocBuffer, list[dict]]:
     """
-    Return provenance-tagged spans for the full current document.
-
-    Replays every provenance event to produce a per-character origin map,
-    then compresses it into contiguous spans — the same format the timeline
-    milestones use, but only the final (100 %) state.
+    Replay all provenance events for a document and return (buffer, events).
     """
-    async with db.execute(
-        "SELECT id FROM documents WHERE id = ?", (doc_id,)
-    ) as cursor:
-        if await cursor.fetchone() is None:
-            raise HTTPException(status_code=404, detail="Document not found")
-
     async with db.execute(
         """
         SELECT from_pos, to_pos, inserted_text, deleted_text,
@@ -193,12 +146,77 @@ async def get_heatmap(
         rows = await cursor.fetchall()
 
     events = [dict(row) for row in rows]
-    if not events:
-        return []
-
     doc_buffer: _DocBuffer = []
     for event in events:
         _apply_event(doc_buffer, event)
+
+    return doc_buffer, events
+
+
+# -- Snapshot creation (called from suggestions router) ------------------------
+
+
+async def create_snapshot(
+    db: aiosqlite.Connection, doc_id: str, label: str | None = None
+) -> None:
+    """
+    Capture the current provenance state as a timeline snapshot.
+
+    Called just before generating AI suggestions (label=None → "Suggest N")
+    or manually from the toolbar (label provided by the caller).
+    """
+    doc_buffer, events = await _replay_events(db, doc_id)
+    if not events:
+        return
+
+    spans = _compress(doc_buffer)
+
+    # Determine the next snapshot number for this document.
+    async with db.execute(
+        "SELECT COALESCE(MAX(snapshot_number), 0) FROM timeline_snapshots WHERE document_id = ?",
+        (doc_id,),
+    ) as cursor:
+        row = await cursor.fetchone()
+    next_number = row[0] + 1
+
+    now = datetime.now(timezone.utc).isoformat()
+
+    await db.execute(
+        """
+        INSERT INTO timeline_snapshots (id, document_id, snapshot_number, event_count, timestamp, spans, label)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            str(uuid.uuid4()),
+            doc_id,
+            next_number,
+            len(events),
+            now,
+            json.dumps(spans),
+            label,
+        ),
+    )
+    await db.commit()
+
+
+# -- Routes --------------------------------------------------------------------
+
+
+@router.get("/{doc_id}/heatmap", response_model=list[TimelineSpan])
+async def get_heatmap(
+    doc_id: str,
+    db: aiosqlite.Connection = Depends(get_db),
+):
+    """Return provenance-tagged spans for the full current document."""
+    async with db.execute(
+        "SELECT id FROM documents WHERE id = ?", (doc_id,)
+    ) as cursor:
+        if await cursor.fetchone() is None:
+            raise HTTPException(status_code=404, detail="Document not found")
+
+    doc_buffer, events = await _replay_events(db, doc_id)
+    if not events:
+        return []
 
     return [
         TimelineSpan(text=s["text"], origin=s["origin"], edit_type=s["edit_type"])
@@ -212,85 +230,98 @@ async def get_timeline(
     db: aiosqlite.Connection = Depends(get_db),
 ):
     """
-    Compute and return milestone snapshots for a document's editing history.
-
-    The milestones are at approximately the 25th, 50th, 75th, and 100th
-    percentiles of the event sequence.  If two milestones land on the same
-    event index (e.g. a document with only 2 events), duplicates are removed
-    so the response contains only distinct snapshots.
+    Return stored Suggest-click snapshots plus a live "Current" snapshot.
     """
-    # Verify the document exists before loading (potentially empty) events.
     async with db.execute(
         "SELECT id FROM documents WHERE id = ?", (doc_id,)
     ) as cursor:
-        doc_row = await cursor.fetchone()
-    if doc_row is None:
-        raise HTTPException(status_code=404, detail="Document not found")
+        if await cursor.fetchone() is None:
+            raise HTTPException(status_code=404, detail="Document not found")
 
-    # Load all events for this document, oldest first.
+    # Stored snapshots from Suggest clicks and manual captures
     async with db.execute(
         """
-        SELECT from_pos, to_pos, inserted_text, deleted_text,
-               origin, edit_type, timestamp
-        FROM provenance_events
+        SELECT id, snapshot_number, event_count, timestamp, spans, label
+        FROM timeline_snapshots
         WHERE document_id = ?
-        ORDER BY timestamp ASC
+        ORDER BY snapshot_number ASC
         """,
         (doc_id,),
     ) as cursor:
-        rows = await cursor.fetchall()
+        snap_rows = await cursor.fetchall()
 
-    events = [dict(row) for row in rows]
-    n = len(events)
-
-    if n == 0:
-        return TimelineResponse(milestones=[])
-
-    # Calculate the event index (exclusive end) for each milestone fraction.
-    # max(1, ...) ensures at least one event is included even for very short docs.
-    # The last slot is always pinned to n (the complete event log).
-    fractions = (0.25, 0.50, 0.75, 1.00)
-    raw_indices = [max(1, int(n * f)) for f in fractions]
-    raw_indices[-1] = n  # guarantee the final snapshot covers all events
-
-    # De-duplicate while preserving order so we don't replay the same state twice.
-    seen: set[int] = set()
-    milestone_pairs: list[tuple[float, int]] = []
-    for frac, idx in zip(fractions, raw_indices):
-        if idx not in seen:
-            seen.add(idx)
-            milestone_pairs.append((frac, idx))
-
-    # Replay events incrementally, capturing a snapshot at each milestone.
-    # We reuse the same buffer across milestones so each milestone only pays
-    # for the events added since the previous one.
-    doc_buffer: _DocBuffer = []
-    prev_idx = 0
     milestones: list[TimelineMilestone] = []
-
-    for frac, end_idx in milestone_pairs:
-        # Apply the events that fall in this milestone's window.
-        for event in events[prev_idx:end_idx]:
-            _apply_event(doc_buffer, event)
-        prev_idx = end_idx
-
-        # Compress the buffer into spans for the response.
-        spans = [
-            TimelineSpan(
-                text=s["text"],
-                origin=s["origin"],
-                edit_type=s["edit_type"],
-            )
-            for s in _compress(doc_buffer)
-        ]
-
+    for row in snap_rows:
+        spans_data = json.loads(row["spans"])
+        display_label = row["label"] or f"Suggest {row['snapshot_number']}"
         milestones.append(
             TimelineMilestone(
-                milestone=frac,
-                event_count=end_idx,
-                timestamp=events[end_idx - 1]["timestamp"],
-                spans=spans,
+                id=row["id"],
+                label=display_label,
+                event_count=row["event_count"],
+                timestamp=row["timestamp"],
+                spans=[
+                    TimelineSpan(
+                        text=s["text"],
+                        origin=s["origin"],
+                        edit_type=s.get("edit_type"),
+                    )
+                    for s in spans_data
+                ],
+            )
+        )
+
+    # Live "Current" snapshot — replay all events
+    doc_buffer, events = await _replay_events(db, doc_id)
+    if events:
+        now = datetime.now(timezone.utc).isoformat()
+        milestones.append(
+            TimelineMilestone(
+                label="Current",
+                event_count=len(events),
+                timestamp=now,
+                spans=[
+                    TimelineSpan(
+                        text=s["text"], origin=s["origin"], edit_type=s["edit_type"]
+                    )
+                    for s in _compress(doc_buffer)
+                ],
             )
         )
 
     return TimelineResponse(milestones=milestones)
+
+
+@router.post("/{doc_id}/snapshot", status_code=201)
+async def create_manual_snapshot(
+    doc_id: str,
+    db: aiosqlite.Connection = Depends(get_db),
+):
+    """Create a manual timeline snapshot labeled with the current timestamp."""
+    async with db.execute(
+        "SELECT id FROM documents WHERE id = ?", (doc_id,)
+    ) as cursor:
+        if await cursor.fetchone() is None:
+            raise HTTPException(status_code=404, detail="Document not found")
+
+    now = datetime.now(timezone.utc)
+    label = "Snapshot — " + now.strftime("%b %-d, %-I:%M %p")
+    await create_snapshot(db, doc_id, label=label)
+    return {"ok": True}
+
+
+@router.delete("/snapshot/{snapshot_id}", status_code=200)
+async def delete_snapshot(
+    snapshot_id: str,
+    db: aiosqlite.Connection = Depends(get_db),
+):
+    """Delete a stored timeline snapshot."""
+    async with db.execute(
+        "SELECT id FROM timeline_snapshots WHERE id = ?", (snapshot_id,)
+    ) as cursor:
+        if await cursor.fetchone() is None:
+            raise HTTPException(status_code=404, detail="Snapshot not found")
+
+    await db.execute("DELETE FROM timeline_snapshots WHERE id = ?", (snapshot_id,))
+    await db.commit()
+    return {"ok": True}

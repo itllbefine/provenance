@@ -3,7 +3,7 @@ import StarterKit from '@tiptap/starter-kit'
 // import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Document, RawProvenanceEvent, Suggestion } from '../api'
-import { flushProvenanceEvents } from '../api'
+import { flushProvenanceEvents, createManualSnapshot } from '../api'
 import { ProvenanceExtension } from '../provenance/ProvenanceExtension'
 // import { HeatmapExtension, heatmapKey, spanCssClass } from '../provenance/HeatmapExtension'
 import type { SaveStatus } from '../App'
@@ -26,6 +26,8 @@ interface Props {
   // Called once on mount with a function that accepts an AI suggestion.
   // The function returns true if the original text was found and replaced.
   onRegisterApplyEdit?: (fn: (original: string, suggested: string, editType: string, origin?: string) => boolean) => void
+  // Called once on mount with a function that flushes pending provenance events.
+  onRegisterFlushEvents?: (fn: () => Promise<void>) => void
   // Called whenever the editor selection changes: non-empty text when the user
   // selects something, null when the cursor is placed without a selection.
   // Does NOT fire on blur — the stored selection persists when focus moves away.
@@ -119,6 +121,7 @@ export default function EditorPanel({
   onContextChange,
   saveStatus,
   onRegisterApplyEdit,
+  onRegisterFlushEvents,
   onSelectionChange,
   getSuggestions,
 }: Props) {
@@ -129,7 +132,11 @@ export default function EditorPanel({
   const [showYouness, setShowYouness] = useState(false)
   const [showTimeline, setShowTimeline] = useState(false)
   const [showDocPicker, setShowDocPicker] = useState(false)
+  const [showAttribution, setShowAttribution] = useState(false)
+  const [snapshotting, setSnapshotting] = useState(false)
+  const [wordCount, setWordCount] = useState(0)
   const docPickerRef = useRef<HTMLDivElement>(null)
+  const attributionRef = useRef<HTMLDivElement>(null)
   // const [heatmapLoading, setHeatmapLoading] = useState(false)
 
   // Refs to prevent stale closures in editor callbacks.
@@ -190,6 +197,12 @@ export default function EditorPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Expose flushEvents to parent so it can flush before generating suggestions.
+  useEffect(() => {
+    onRegisterFlushEvents?.(flushEvents)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onRegisterFlushEvents])
+
   // Close the doc-picker when the user clicks outside of it.
   useEffect(() => {
     if (!showDocPicker) return
@@ -201,6 +214,18 @@ export default function EditorPanel({
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [showDocPicker])
+
+  // Close the attribution dropdown when the user clicks outside of it.
+  useEffect(() => {
+    if (!showAttribution) return
+    function handleClickOutside(e: MouseEvent) {
+      if (attributionRef.current && !attributionRef.current.contains(e.target as Node)) {
+        setShowAttribution(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [showAttribution])
 
   // Configure the provenance extension once. useMemo with [] means this
   // object is created once on mount and never re-created. The callback
@@ -250,6 +275,8 @@ export default function EditorPanel({
     },
     onUpdate({ editor }) {
       onChangeRef.current(titleRef.current, JSON.stringify(editor.getJSON()))
+      const text = editor.getText()
+      setWordCount(text.trim() === '' ? 0 : text.trim().split(/\s+/).length)
     },
   })
 
@@ -378,10 +405,50 @@ export default function EditorPanel({
       editor.commands.setContent(parseContent(initialContent))
       setTitle(initialTitle)
       setContext(initialContext)
+      const text = editor.getText()
+      setWordCount(text.trim() === '' ? 0 : text.trim().split(/\s+/).length)
     }
     // Only run when documentId changes, not on every render
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [documentId])
+
+  // Manual attribution: push a provenance event that re-tags the selected text
+  // with a new origin. The content doesn't change — only the provenance tag does.
+  function handleAttribution(origin: string) {
+    if (!editor) return
+    const { from, to } = editor.state.selection
+    if (from === to) return
+    const selectedText = editor.state.doc.textBetween(from, to, '\n')
+    if (!selectedText) return
+
+    pendingEventsRef.current.push({
+      event_type: 'replace',
+      from_pos: from,
+      to_pos: to,
+      inserted_text: selectedText,
+      deleted_text: selectedText,
+      author: 'local_user',
+      timestamp: new Date().toISOString(),
+      origin: origin as RawProvenanceEvent['origin'],
+      edit_type: null,
+    })
+    setShowAttribution(false)
+  }
+
+  async function handleSnapshot() {
+    if (snapshotting) return
+    setSnapshotting(true)
+    try {
+      await flushEvents()
+      await createManualSnapshot(documentIdRef.current)
+    } catch (err) {
+      console.error('Snapshot failed:', err)
+    } finally {
+      setSnapshotting(false)
+    }
+  }
+
+  const hasSelection = editor ? editor.state.selection.from !== editor.state.selection.to : false
 
   if (!editor) return null
 
@@ -474,6 +541,14 @@ export default function EditorPanel({
         </button>
 
         <button
+          onClick={() => void handleSnapshot()}
+          disabled={snapshotting}
+          title="Capture a manual timeline snapshot"
+        >
+          {snapshotting ? 'Saving…' : 'Snapshot'}
+        </button>
+
+        <button
           onClick={() => setShowContext((v) => !v)}
           className={showContext ? 'active' : ''}
           title="Document context"
@@ -481,7 +556,29 @@ export default function EditorPanel({
           Context
         </button>
 
+        <div className="attribution-wrapper" ref={attributionRef}>
+          <button
+            onClick={() => setShowAttribution((v) => !v)}
+            className={showAttribution ? 'active' : ''}
+            disabled={!hasSelection}
+            title={hasSelection ? 'Set provenance for selected text' : 'Select text first'}
+          >
+            Attribute
+          </button>
+          {showAttribution && hasSelection && (
+            <div className="attribution-dropdown">
+              <button onClick={() => handleAttribution('human')}>Human (original)</button>
+              <button onClick={() => handleAttribution('ai_generated')}>AI Generated</button>
+              <button onClick={() => handleAttribution('ai_modified')}>AI Modified</button>
+              <button onClick={() => handleAttribution('ai_collaborative')}>AI Collaborative</button>
+              <button onClick={() => handleAttribution('ai_influenced')}>AI Influenced</button>
+            </div>
+          )}
+        </div>
+
         <div className="toolbar-spacer" />
+
+        <span className="word-count">{wordCount} {wordCount === 1 ? 'word' : 'words'}</span>
 
         <span className={`save-status save-status--${saveStatus}`}>
           {SAVE_LABEL[saveStatus]}
