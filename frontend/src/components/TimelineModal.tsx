@@ -29,10 +29,10 @@ function spanBg(origin: string, editType: string | null): string {
 
   // AI origins
   switch (editType) {
-    case 'grammar_fix':         return 'rgba(253, 224, 71, 0.45)'
-    case 'wording_change':      return 'rgba(251, 146, 60, 0.35)'
-    case 'organizational_move': return 'rgba(167, 139, 250, 0.40)'
-    default:                    return 'rgba(251, 113, 133, 0.25)'
+    case 'grammar_fix':         return 'rgba(34, 211, 238, 0.30)'
+    case 'wording_change':      return 'rgba(74, 222, 128, 0.30)'
+    case 'organizational_move': return 'rgba(96, 165, 250, 0.35)'
+    default:                    return 'rgba(251, 191, 36, 0.25)'
   }
 }
 
@@ -194,21 +194,12 @@ async function exportTimeline(data: TimelineResponse): Promise<void> {
 
 const LEGEND: { group: string; items: { label: string; color: string }[] }[] = [
   {
-    group: 'Human',
+    group: 'AI',
     items: [
       { label: 'Grammar fix',   color: 'rgba(34, 211, 238, 0.55)' },
       { label: 'Wording',       color: 'rgba(74, 222, 128, 0.55)' },
       { label: 'Reorganized',   color: 'rgba(96, 165, 250, 0.60)' },
-      { label: 'Other edit',    color: 'rgba(251, 191, 36, 0.50)' },
-    ],
-  },
-  {
-    group: 'AI',
-    items: [
-      { label: 'Grammar fix',   color: 'rgba(253, 224, 71, 0.70)' },
-      { label: 'Wording',       color: 'rgba(251, 146, 60, 0.60)' },
-      { label: 'Reorganized',   color: 'rgba(167, 139, 250, 0.65)' },
-      { label: 'Generated',     color: 'rgba(251, 113, 133, 0.50)' },
+      { label: 'Generated',     color: 'rgba(251, 191, 36, 0.50)' },
     ],
   },
 ]

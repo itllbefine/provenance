@@ -244,7 +244,7 @@ export default function EditorPanel({
         // Cursor placed with no selection — clear any stored selection.
         onSelectionChangeRef.current?.(null)
       } else {
-        const text = editor.state.doc.textBetween(from, to, ' ')
+        const text = editor.state.doc.textBetween(from, to, '\n\n')
         onSelectionChangeRef.current?.(text || null)
       }
     },
@@ -270,22 +270,38 @@ export default function EditorPanel({
       // Build a flat array: for each character in text nodes, record its
       // absolute ProseMirror position. This lets us map a string-index match
       // back to document positions even across adjacent text nodes.
+      // '\n\n' is inserted at each paragraph boundary, matching what
+      // extract_text() in the backend sends to Claude. This lets originalText
+      // spanning a paragraph break be found correctly. Boundary entries get
+      // posMap value -1 (virtual — no real PM position for the newlines).
       const posMap: number[] = []
       let combined = ''
+      let lastTextEnd = -1
       doc.descendants((node, pos) => {
-        if (node.isText && node.text) {
-          for (let i = 0; i < node.text.length; i++) {
-            posMap.push(pos + i)
-            combined += node.text[i]
-          }
+        if (!node.isText || !node.text) return
+        if (lastTextEnd !== -1 && pos > lastTextEnd + 1) {
+          posMap.push(-1, -1)
+          combined += '\n\n'
         }
+        for (let i = 0; i < node.text.length; i++) {
+          posMap.push(pos + i)
+          combined += node.text[i]
+        }
+        lastTextEnd = pos + node.text.length
       })
 
       const idx = combined.indexOf(originalText)
       if (idx === -1) return false
 
-      const from = posMap[idx]
-      const to = posMap[idx + originalText.length - 1] + 1
+      // If originalText spans a paragraph boundary, posMap at the start or end
+      // may be -1 (the virtual space). Scan to the nearest real position.
+      let fromIdx = idx
+      while (fromIdx < posMap.length && posMap[fromIdx] === -1) fromIdx++
+      let toIdx = idx + originalText.length - 1
+      while (toIdx >= 0 && posMap[toIdx] === -1) toIdx--
+
+      const from = posMap[fromIdx]
+      const to = posMap[toIdx] + 1
 
       // Preserve marks at the insertion point (e.g. bold, italic).
       const marks = doc.resolve(from).marks()

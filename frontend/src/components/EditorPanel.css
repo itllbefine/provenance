@@ -298,22 +298,22 @@
 
 /* ── AI edits ── */
 
-/* AI grammar/punctuation fix — light yellow */
+/* AI grammar/punctuation fix — cyan */
 .heatmap-span--ai-grammar-fix {
-  background-color: rgba(253, 224, 71, 0.45); /* yellow-300 */
+  background-color: rgba(34, 211, 238, 0.30); /* cyan-400 */
 }
 
-/* AI rewording for clarity or tone — light orange */
+/* AI rewording for clarity or tone — green */
 .heatmap-span--ai-wording-change {
-  background-color: rgba(251, 146, 60, 0.35); /* orange-400 */
+  background-color: rgba(74, 222, 128, 0.30); /* green-400 */
 }
 
-/* AI structural reorganisation — light purple */
+/* AI structural reorganisation — blue */
 .heatmap-span--ai-organizational-move {
-  background-color: rgba(167, 139, 250, 0.40); /* violet-400 */
+  background-color: rgba(96, 165, 250, 0.35); /* blue-400 */
 }
 
-/* Fallback for AI edits where edit_type is unknown — rose tint (Phase 4 color) */
+/* Fallback for AI edits where edit_type is unknown — amber */
 .heatmap-span--ai-modified {
-  background-color: rgba(251, 113, 133, 0.25); /* rose-400 */
+  background-color: rgba(251, 191, 36, 0.25); /* amber-300 */
 }
