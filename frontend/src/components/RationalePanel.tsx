@@ -19,7 +19,7 @@ interface Props {
   activeSelection: string | null
   /** Call to dismiss the stored selection (e.g. user clicks the ✕ on the preview). */
   onClearSelection: () => void
-  onAcceptChatEdit: (original: string, suggested: string, editType: string) => void
+  onAcceptChatEdit: (original: string, suggested: string, editType: string) => boolean
 }
 
 const dmp = new DiffMatchPatch()
@@ -142,13 +142,22 @@ export default function RationalePanel({
                       />
                       <button
                         className="chat-accept-btn"
-                        onClick={() =>
-                          onAcceptChatEdit(
+                        onClick={() => {
+                          const applied = onAcceptChatEdit(
                             msg.suggestedEdit!.original_text,
                             msg.suggestedEdit!.suggested_text,
                             msg.suggestedEdit!.edit_type,
                           )
-                        }
+                          if (applied) {
+                            // Remove the proposed edit from this message (mirrors
+                            // how SuggestionsPanel removes accepted suggestion cards).
+                            setMessages((prev) =>
+                              prev.map((m, idx) =>
+                                idx === i ? { ...m, suggestedEdit: undefined } : m,
+                              ),
+                            )
+                          }
+                        }}
                       >
                         Accept
                       </button>

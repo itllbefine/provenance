@@ -227,6 +227,7 @@ export default function App() {
                   'The document may have changed.',
                 )
               }
+              return !!applied
             }}
           />
         </div>
