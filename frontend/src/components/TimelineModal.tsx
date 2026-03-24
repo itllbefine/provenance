@@ -10,43 +10,43 @@ interface Props {
 
 // -- Shared color definitions -------------------------------------------------
 
-// Legend items used in the UI, PNG, and PDF color keys.
-const LEGEND_ITEMS: { label: string; cssColor: string; rgb: [number, number, number] }[] = [
-  { label: 'Grammar fix', cssColor: 'rgba(34, 211, 238, 0.55)', rgb: [34, 211, 238] },
-  { label: 'Wording',     cssColor: 'rgba(74, 222, 128, 0.55)', rgb: [74, 222, 128] },
-  { label: 'Reorganized', cssColor: 'rgba(96, 165, 250, 0.60)', rgb: [96, 165, 250] },
-  { label: 'Generated',   cssColor: 'rgba(251, 191, 36, 0.50)', rgb: [251, 191, 36] },
+// Legend items keyed by origin. Order: Human (transparent), AI Influenced, AI Assisted, AI Generated.
+// "AI Assisted" covers both ai_modified (panel accept) and ai_collaborative (chat accept).
+const LEGEND_ITEMS: { label: string; origins: string[]; cssColor: string; rgb: [number, number, number] }[] = [
+  { label: 'Human',          origins: ['human', 'human_edit'], cssColor: 'transparent',              rgb: [255, 255, 255] },
+  { label: 'AI Influenced',  origins: ['ai_influenced'],       cssColor: 'rgba(34, 211, 238, 0.55)', rgb: [34, 211, 238] },
+  { label: 'AI Assisted',    origins: ['ai_modified', 'ai_collaborative'], cssColor: 'rgba(74, 222, 128, 0.55)', rgb: [74, 222, 128] },
+  { label: 'AI Generated',   origins: ['ai_generated'],        cssColor: 'rgba(251, 191, 36, 0.50)', rgb: [251, 191, 36] },
 ]
 
-// Map edit_type to legend index (for shared lookup)
-const EDIT_TYPE_INDEX: Record<string, number> = {
-  grammar_fix: 0,
-  wording_change: 1,
-  organizational_move: 2,
-}
+// Map origin to legend index
+const ORIGIN_INDEX: Record<string, number> = {}
+LEGEND_ITEMS.forEach((item, i) => {
+  for (const o of item.origins) ORIGIN_INDEX[o] = i
+})
 
 /**
- * Map a provenance (origin, edit_type) pair to a CSS background-color string.
+ * Map a provenance origin to a CSS background-color string.
  */
-function spanBg(origin: string, editType: string | null): string {
+function spanBg(origin: string, _editType: string | null): string {
   if (origin === 'boundary') return 'transparent'
   if (origin === 'human' || origin === 'human_edit') return 'transparent'
 
-  const idx = editType ? EDIT_TYPE_INDEX[editType] : undefined
+  const idx = ORIGIN_INDEX[origin]
   if (idx !== undefined) return LEGEND_ITEMS[idx].cssColor
-  // Default: "Generated" (amber)
-  return LEGEND_ITEMS[3].cssColor
+  // Fallback for unknown AI origins
+  return LEGEND_ITEMS[0].cssColor
 }
 
 /**
  * Return an RGB triple blended against white at the given alpha,
  * or null if the span should have no background.
  */
-function spanPdfBg(origin: string, editType: string | null): [number, number, number] | null {
+function spanPdfBg(origin: string, _editType: string | null): [number, number, number] | null {
   if (origin === 'boundary' || origin === 'human' || origin === 'human_edit') return null
 
-  const idx = editType ? EDIT_TYPE_INDEX[editType] : undefined
-  const [r, g, b] = idx !== undefined ? LEGEND_ITEMS[idx].rgb : LEGEND_ITEMS[3].rgb
+  const idx = ORIGIN_INDEX[origin]
+  const [r, g, b] = idx !== undefined ? LEGEND_ITEMS[idx].rgb : LEGEND_ITEMS[0].rgb
 
   // Blend against white at ~0.30 alpha so the background is a subtle tint
   const a = 0.30
@@ -126,10 +126,9 @@ function ColorKey() {
   return (
     <div className="tl-legend">
       <div className="tl-legend-group">
-        <span className="tl-legend-group-label">AI</span>
         {LEGEND_ITEMS.map((item) => (
           <span key={item.label} className="tl-legend-item">
-            <span className="tl-legend-swatch" style={{ background: item.cssColor }} />
+            <span className="tl-legend-swatch" style={{ background: item.cssColor === 'transparent' ? '#fff' : item.cssColor, border: item.cssColor === 'transparent' ? '1px solid #ddd' : 'none' }} />
             {item.label}
           </span>
         ))}
@@ -219,21 +218,26 @@ function downloadDataUrl(dataUrl: string, filename: string) {
 /** Draw the color key legend onto a canvas at the given position. Returns the height used. */
 function drawCanvasLegend(ctx: CanvasRenderingContext2D, x: number, y: number, scale: number): number {
   const s = scale
-  const swatchW = 10 * s
-  const swatchH = 10 * s
-  const itemGap = 12 * s
-  const textOffset = swatchW + 4 * s
+  const swatchW = 14 * s
+  const swatchH = 14 * s
+  const itemGap = 16 * s
+  const textOffset = swatchW + 5 * s
 
-  ctx.font = `bold ${9 * s}px sans-serif`
-  ctx.fillStyle = '#888'
-  ctx.fillText('AI', x, y + swatchH)
-  let cx = x + ctx.measureText('AI').width + 8 * s
-
-  ctx.font = `${8 * s}px sans-serif`
+  ctx.font = `bold ${12 * s}px sans-serif`
+  let cx = x
   for (const item of LEGEND_ITEMS) {
     const [r, g, b] = item.rgb
-    ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.55)`
-    ctx.fillRect(cx, y, swatchW, swatchH)
+    if (item.cssColor === 'transparent') {
+      // Human swatch: light fill with border
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(cx, y, swatchW, swatchH)
+      ctx.strokeStyle = '#ddd'
+      ctx.lineWidth = 1 * s
+      ctx.strokeRect(cx, y, swatchW, swatchH)
+    } else {
+      ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.55)`
+      ctx.fillRect(cx, y, swatchW, swatchH)
+    }
     ctx.fillStyle = '#666'
     ctx.fillText(item.label, cx + textOffset, y + swatchH - 1 * s)
     cx += textOffset + ctx.measureText(item.label).width + itemGap
@@ -247,33 +251,35 @@ function drawCanvasLegend(ctx: CanvasRenderingContext2D, x: number, y: number, s
 type JsPDF = InstanceType<typeof import('jspdf').jsPDF>
 
 /** Draw the color key legend onto a PDF page. Returns the y position after the legend. */
-function drawPdfLegend(pdf: JsPDF, margin: number, y: number): number {
-  const swatchW = 8
-  const swatchH = 6
-  const itemGap = 8
+function drawPdfLegend(pdf: JsPDF, margin: number, y: number, s = 1): number {
+  const swatchW = 10 * s
+  const swatchH = 10 * s
+  const itemGap = 12 * s
+  const textOff = swatchW + 4 * s
 
   pdf.setFont('helvetica', 'bold')
-  pdf.setFontSize(8)
-  pdf.setTextColor(136, 136, 136)
-  pdf.text('AI', margin, y + swatchH - 1)
-  let cx = margin + pdf.getTextWidth('AI') + 6
-
-  pdf.setFont('helvetica', 'normal')
-  pdf.setFontSize(7)
+  pdf.setFontSize(11 * s)
+  let cx = margin
   for (const item of LEGEND_ITEMS) {
-    // Blend RGB against white at 0.30 for a visible swatch
-    const a = 0.30
-    const r = Math.round(255 * (1 - a) + item.rgb[0] * a)
-    const g = Math.round(255 * (1 - a) + item.rgb[1] * a)
-    const b = Math.round(255 * (1 - a) + item.rgb[2] * a)
-    pdf.setFillColor(r, g, b)
-    pdf.rect(cx, y, swatchW, swatchH, 'F')
+    if (item.cssColor === 'transparent') {
+      pdf.setFillColor(255, 255, 255)
+      pdf.rect(cx, y, swatchW, swatchH, 'F')
+      pdf.setDrawColor(221, 221, 221)
+      pdf.rect(cx, y, swatchW, swatchH, 'S')
+    } else {
+      const a = 0.30
+      const r = Math.round(255 * (1 - a) + item.rgb[0] * a)
+      const g = Math.round(255 * (1 - a) + item.rgb[1] * a)
+      const b = Math.round(255 * (1 - a) + item.rgb[2] * a)
+      pdf.setFillColor(r, g, b)
+      pdf.rect(cx, y, swatchW, swatchH, 'F')
+    }
     pdf.setTextColor(102, 102, 102)
-    pdf.text(item.label, cx + swatchW + 3, y + swatchH - 1)
-    cx += swatchW + 3 + pdf.getTextWidth(item.label) + itemGap
+    pdf.text(item.label, cx + textOff, y + swatchH - 1 * s)
+    cx += textOff + pdf.getTextWidth(item.label) + itemGap
   }
 
-  return y + swatchH + 8
+  return y + swatchH + 8 * s
 }
 
 /**
@@ -293,108 +299,151 @@ function renderSpansToPdf(
 ): void {
   const pageW = pdf.internal.pageSize.getWidth()
   const pageH = pdf.internal.pageSize.getHeight()
-  const margin = 40
+  // Scale all sizes proportionally to page width (letter = 612pt baseline)
+  const scale = pageW / 612
+  const margin = Math.round(40 * scale)
   const maxX = pageW - margin
-  const bodyFontSize = 11
+  const bodyFontSize = Math.round(11 * scale)
   const lineH = bodyFontSize * 1.5
   const ascent = bodyFontSize * 0.8
 
   // --- Header (page 1) ---
   pdf.setFont('times', 'bold')
-  pdf.setFontSize(16)
+  pdf.setFontSize(Math.round(16 * scale))
   pdf.setTextColor(26, 26, 24)
-  pdf.text(label, margin, margin + 16)
+  pdf.text(label, margin, margin + Math.round(16 * scale))
 
   pdf.setFont('times', 'normal')
-  pdf.setFontSize(9)
+  pdf.setFontSize(Math.round(9 * scale))
   pdf.setTextColor(160, 160, 160)
   pdf.text(
     `${eventCount} edit${eventCount !== 1 ? 's' : ''} · ${fmtTimestamp(timestamp)}`,
     margin,
-    margin + 28,
+    margin + Math.round(28 * scale),
   )
 
-  let startY = drawPdfLegend(pdf, margin, margin + 38)
+  let startY = drawPdfLegend(pdf, margin, margin + Math.round(38 * scale), scale)
   pdf.setDrawColor(220, 220, 220)
   pdf.line(margin, startY, pageW - margin, startY)
-  startY += 12
+  startY += Math.round(12 * scale)
 
-  // --- Tokenize spans ---
-  type Token = { text: string; bg: [number, number, number] | null; paraBreak?: boolean }
-  const tokens: Token[] = []
+  // --- Build a flat character buffer with per-char colors ---
+  // Each char gets the background color from its provenance span.
+  type CharEntry = { ch: string; bg: [number, number, number] | null }
+  const charBuf: (CharEntry | 'para')[] = []
 
   for (const span of spans) {
     if (span.origin === 'boundary') continue
     const bg = spanPdfBg(span.origin, span.edit_type)
-    const segments = span.text.split('\n')
-    for (let si = 0; si < segments.length; si++) {
-      if (si > 0) tokens.push({ text: '', bg: null, paraBreak: true })
-      const segment = segments[si]
-      if (!segment) continue
-      const parts = segment.match(/\S+|\s+/g) || []
-      for (const part of parts) {
-        tokens.push({ text: part, bg })
+    for (const ch of span.text) {
+      if (ch === '\n') {
+        charBuf.push('para')
+      } else {
+        charBuf.push({ ch, bg })
       }
     }
   }
 
+  // --- Tokenize into words and whitespace, preserving per-char colors ---
+  // A "word token" is a contiguous run of non-space chars; wrapping only
+  // breaks between tokens, never inside a word.
+  type ColorRun = { text: string; bg: [number, number, number] | null }
+  type WordToken = { runs: ColorRun[]; fullText: string; paraBreak?: boolean }
+  const tokens: WordToken[] = []
+  let currentRuns: ColorRun[] = []
+  let currentText = ''
+
+  function flushWord() {
+    if (currentText) {
+      tokens.push({ runs: currentRuns, fullText: currentText })
+      currentRuns = []
+      currentText = ''
+    }
+  }
+
+  function appendChar(ch: string, bg: [number, number, number] | null) {
+    const lastRun = currentRuns[currentRuns.length - 1]
+    const sameColor = lastRun && (
+      (lastRun.bg === null && bg === null) ||
+      (lastRun.bg !== null && bg !== null &&
+        lastRun.bg[0] === bg[0] && lastRun.bg[1] === bg[1] && lastRun.bg[2] === bg[2])
+    )
+    if (sameColor) {
+      lastRun.text += ch
+    } else {
+      currentRuns.push({ text: ch, bg })
+    }
+    currentText += ch
+  }
+
+  for (const entry of charBuf) {
+    if (entry === 'para') {
+      flushWord()
+      tokens.push({ runs: [], fullText: '', paraBreak: true })
+    } else if (entry.ch === ' ' || entry.ch === '\t') {
+      // Whitespace is its own token (can be dropped at line breaks)
+      flushWord()
+      appendChar(entry.ch, entry.bg)
+      flushWord()
+    } else {
+      appendChar(entry.ch, entry.bg)
+    }
+  }
+  flushWord()
+
   // --- Pass 1: compute layout positions ---
+  // Each placed item is one color-run within a word, positioned on the page.
   type Placed = { page: number; x: number; y: number; w: number; text: string; bg: [number, number, number] | null }
   const placed: Placed[] = []
   let page = 1
   let x = margin
   let y = startY
-  // Track which pages need a legend header (page 1 already has one)
   const pageHeaderY: Map<number, number> = new Map()
   pageHeaderY.set(1, startY)
 
   pdf.setFont('times', 'normal')
   pdf.setFontSize(bodyFontSize)
 
+  function advancePage() {
+    page++
+    pdf.addPage()
+    y = margin
+    y = drawPdfLegend(pdf, margin, y, scale)
+    pdf.setDrawColor(220, 220, 220)
+    pdf.line(margin, y, pageW - margin, y)
+    y += Math.round(12 * scale)
+    pageHeaderY.set(page, y)
+    pdf.setFont('times', 'normal')
+    pdf.setFontSize(bodyFontSize)
+  }
+
   for (const token of tokens) {
     if (token.paraBreak) {
       x = margin
       y += lineH * 1.2
-      if (y > pageH - margin) {
-        page++
-        pdf.addPage()
-        y = margin
-        y = drawPdfLegend(pdf, margin, y)
-        pdf.setDrawColor(220, 220, 220)
-        pdf.line(margin, y, pageW - margin, y)
-        y += 12
-        pageHeaderY.set(page, y)
-        pdf.setFont('times', 'normal')
-        pdf.setFontSize(bodyFontSize)
-      }
+      if (y > pageH - margin) advancePage()
       x = margin
       continue
     }
 
     pdf.setFont('times', 'normal')
     pdf.setFontSize(bodyFontSize)
-    const w = pdf.getTextWidth(token.text)
+    const fullW = pdf.getTextWidth(token.fullText)
 
-    if (x + w > maxX && x > margin) {
-      if (token.text.trim() === '') continue
+    // Line wrap: break before the whole word if it doesn't fit
+    if (x + fullW > maxX && x > margin) {
+      if (token.fullText.trim() === '') continue // drop whitespace at line break
       x = margin
       y += lineH
-      if (y > pageH - margin) {
-        page++
-        pdf.addPage()
-        y = margin
-        y = drawPdfLegend(pdf, margin, y)
-        pdf.setDrawColor(220, 220, 220)
-        pdf.line(margin, y, pageW - margin, y)
-        y += 12
-        pageHeaderY.set(page, y)
-        pdf.setFont('times', 'normal')
-        pdf.setFontSize(bodyFontSize)
-      }
+      if (y > pageH - margin) advancePage()
     }
 
-    placed.push({ page, x, y, w, text: token.text, bg: token.bg })
-    x += w
+    // Place each color run within this word
+    for (const run of token.runs) {
+      const w = pdf.getTextWidth(run.text)
+      placed.push({ page, x, y, w, text: run.text, bg: run.bg })
+      x += w
+    }
   }
 
   const totalPages = page
@@ -460,10 +509,10 @@ function renderSpansToPdf(
 
 // -- Main export function -----------------------------------------------------
 
-const TARGET_W = 900
-const MIN_CARD_W = 100
+const PNG_SIZE = 1080
 const PNG_GAP = 10
 const PNG_PAD = 16
+const MIN_CARD_W = 80
 
 async function exportTimeline(data: TimelineResponse): Promise<void> {
   const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
@@ -474,10 +523,12 @@ async function exportTimeline(data: TimelineResponse): Promise<void> {
   const n = data.milestones.length
   if (n === 0) return
 
-  // --- PNG: thumbnail grid ---
-  const maxColsForWidth = Math.floor((TARGET_W + PNG_GAP) / (MIN_CARD_W + PNG_GAP))
+  // --- PNG: 1080×1080 thumbnail grid ---
+  // Work in CSS pixels at half the target (scale=2 in html2canvas doubles it).
+  const halfSize = PNG_SIZE / 2
+  const maxColsForWidth = Math.floor((halfSize + PNG_GAP) / (MIN_CARD_W + PNG_GAP))
   const cols = Math.min(n, maxColsForWidth)
-  const cardW = Math.floor((TARGET_W - PNG_PAD * 2 - (cols - 1) * PNG_GAP) / cols)
+  const cardW = Math.floor((halfSize - PNG_PAD * 2 - (cols - 1) * PNG_GAP) / cols)
   const fontSize = Math.max(4, Math.min(9, cardW / 30))
 
   const cards: { canvas: HTMLCanvasElement; milestone: TimelineMilestone }[] = []
@@ -486,7 +537,7 @@ async function exportTimeline(data: TimelineResponse): Promise<void> {
     cards.push({ canvas, milestone })
   }
 
-  const s = 2
+  const s = 2 // html2canvas scale factor
   const cellW = cardW * s
   const rows = Math.ceil(n / cols)
 
@@ -500,43 +551,65 @@ async function exportTimeline(data: TimelineResponse): Promise<void> {
     rowMaxH.push(maxH)
   }
 
-  // Extra space at the bottom for the legend
-  const legendH = 24 * s
-  const gridW = PNG_PAD * s * 2 + cols * cellW + (cols - 1) * PNG_GAP * s
-  const gridH = PNG_PAD * s * 2 + rowMaxH.reduce((a, b) => a + b, 0) + (rows - 1) * PNG_GAP * s + legendH
+  const legendH = 32 * s
+  const contentH = PNG_PAD * s * 2 + rowMaxH.reduce((a, b) => a + b, 0) + (rows - 1) * PNG_GAP * s + legendH
 
   const grid = document.createElement('canvas')
-  grid.width = gridW
-  grid.height = gridH
+  grid.width = PNG_SIZE
+  grid.height = PNG_SIZE
   const ctx = grid.getContext('2d')!
   ctx.fillStyle = '#ffffff'
-  ctx.fillRect(0, 0, gridW, gridH)
+  ctx.fillRect(0, 0, PNG_SIZE, PNG_SIZE)
 
-  let yOffset = PNG_PAD * s
+  // Center content vertically in the 1080×1080 square
+  const topOffset = Math.max(PNG_PAD * s, Math.floor((PNG_SIZE - contentH) / 2))
+  // Center content horizontally
+  const gridContentW = cols * cellW + (cols - 1) * PNG_GAP * s
+  const leftOffset = Math.floor((PNG_SIZE - gridContentW) / 2)
+
+  let yOffset = topOffset
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       const idx = r * cols + c
       if (idx >= cards.length) break
       const { canvas, milestone } = cards[idx]
-      const x = PNG_PAD * s + c * (cellW + PNG_GAP * s)
+      const x = leftOffset + c * (cellW + PNG_GAP * s)
       const isCurrent = milestone.label === 'Current'
-      const src = isCurrent ? canvas : blurCanvas(canvas, 6)
+      const src = isCurrent ? canvas : blurCanvas(canvas, 3)
       ctx.drawImage(src, x, yOffset)
     }
     yOffset += rowMaxH[r] + PNG_GAP * s
   }
 
-  // Draw legend at the bottom of the grid
-  drawCanvasLegend(ctx, PNG_PAD * s, yOffset, s)
+  // Draw legend centered at the bottom of the content
+  const legendScale = s
+  // Measure legend width to center it
+  ctx.font = `bold ${12 * legendScale}px sans-serif`
+  const swatchW = 14 * legendScale
+  const textOff = swatchW + 5 * legendScale
+  const itemGap = 16 * legendScale
+  let legendW = 0
+  for (const item of LEGEND_ITEMS) {
+    legendW += textOff + ctx.measureText(item.label).width + itemGap
+  }
+  legendW -= itemGap // no trailing gap
+  const legendX = Math.floor((PNG_SIZE - legendW) / 2)
+  drawCanvasLegend(ctx, legendX, yOffset, legendScale)
 
   downloadDataUrl(grid.toDataURL('image/png'), 'timeline.png')
 
-  // --- PDF: Current version with real selectable text ---
   const current = data.milestones.find((m) => m.label === 'Current')
   if (current) {
-    const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' })
-    renderSpansToPdf(pdf, current.spans, 'Current', current.timestamp, current.event_count)
-    pdf.save('timeline-current.pdf')
+    // --- PDF letter: 8.5"×11" with real selectable text ---
+    const pdfLetter = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' })
+    renderSpansToPdf(pdfLetter, current.spans, 'Current', current.timestamp, current.event_count)
+    pdfLetter.save('timeline-current.pdf')
+
+    // --- PDF square: 1080×1080px (converted to pt: 1080 * 72/96 = 810pt) ---
+    const squarePt = 1080 * 72 / 96
+    const pdfSquare = new jsPDF({ orientation: 'portrait', unit: 'pt', format: [squarePt, squarePt] })
+    renderSpansToPdf(pdfSquare, current.spans, 'Current', current.timestamp, current.event_count)
+    pdfSquare.save('timeline-current-square.pdf')
   }
 }
 
@@ -603,7 +676,7 @@ export default function TimelineModal({ documentId, onClose }: Props) {
             title={
               exporting
                 ? 'Generating export…'
-                : 'Export snapshots (PNG + PDF)'
+                : 'Export snapshots (PNG + letter PDF + square PDF)'
             }
           >
             {exporting ? 'Exporting…' : 'Export'}

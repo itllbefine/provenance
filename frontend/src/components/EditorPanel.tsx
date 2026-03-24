@@ -567,11 +567,10 @@ export default function EditorPanel({
           </button>
           {showAttribution && hasSelection && (
             <div className="attribution-dropdown">
-              <button onClick={() => handleAttribution('human')}>Human (original)</button>
-              <button onClick={() => handleAttribution('ai_generated')}>AI Generated</button>
-              <button onClick={() => handleAttribution('ai_modified')}>AI Modified</button>
-              <button onClick={() => handleAttribution('ai_collaborative')}>AI Collaborative</button>
+              <button onClick={() => handleAttribution('human')}>Human</button>
               <button onClick={() => handleAttribution('ai_influenced')}>AI Influenced</button>
+              <button onClick={() => handleAttribution('ai_modified')}>AI Assisted</button>
+              <button onClick={() => handleAttribution('ai_generated')}>AI Generated</button>
             </div>
           )}
         </div>

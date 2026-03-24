@@ -365,24 +365,41 @@ async def generate_suggestions(
     )
 
     # The response content is a list of blocks. Find the tool_use block.
-    suggestions_raw: list[dict] = []
+    suggestions_raw: list = []
     for block in response.content:
         if block.type == "tool_use" and block.name == "record_suggestions":
             suggestions_raw = block.input.get("suggestions", [])
             break
 
+    # Normalize: Claude sometimes returns items as JSON strings instead of dicts.
+    normalized: list[dict] = []
+    for item in suggestions_raw:
+        if isinstance(item, dict):
+            normalized.append(item)
+        elif isinstance(item, str):
+            try:
+                parsed = json.loads(item)
+                if isinstance(parsed, dict):
+                    normalized.append(parsed)
+            except json.JSONDecodeError:
+                continue
+        # Skip anything else
+
     # Safety net: drop any suggestion whose original_text is still dismissed,
     # in case Claude ignored the instruction.
     dismissed_set = set(active_dismissed)
-    suggestions_raw = [s for s in suggestions_raw if s["original_text"] not in dismissed_set]
+    normalized = [
+        s for s in normalized
+        if s.get("original_text", "") not in dismissed_set
+    ]
 
     return [
         SuggestionResponse(
             id=str(i),
-            original_text=s["original_text"],
-            suggested_text=s["suggested_text"],
-            rationale=s["rationale"],
-            edit_type=s["edit_type"],
+            original_text=s.get("original_text", ""),
+            suggested_text=s.get("suggested_text", ""),
+            rationale=s.get("rationale", ""),
+            edit_type=s.get("edit_type", "wording_change"),
         )
-        for i, s in enumerate(suggestions_raw)
+        for i, s in enumerate(normalized)
     ]
