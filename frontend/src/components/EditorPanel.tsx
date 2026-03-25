@@ -491,21 +491,24 @@ export default function EditorPanel({
     if (!editor) return
     const { from, to } = editor.state.selection
     if (from === to) return
-    const selectedText = editor.state.doc.textBetween(from, to, '\n')
-    if (!selectedText) return
 
     pendingEventsRef.current.push({
-      event_type: 'replace',
+      event_type: 'retag',
       from_pos: from,
       to_pos: to,
-      inserted_text: selectedText,
-      deleted_text: selectedText,
+      inserted_text: '',
+      deleted_text: '',
       author: 'local_user',
       timestamp: new Date().toISOString(),
       origin: origin as RawProvenanceEvent['origin'],
       edit_type: null,
     })
     setShowAttribution(false)
+
+    // Flush immediately so Source view updates right away
+    if (showSourceRef.current) {
+      void flushEvents()
+    }
   }
 
   async function handleSnapshot() {

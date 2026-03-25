@@ -79,9 +79,11 @@ def _apply_event(doc: _DocBuffer, event: dict) -> None:
     origin = event.get("origin") or "human"
     edit_type = event.get("edit_type")
     inserted = event.get("inserted_text") or ""
+    event_type = event.get("event_type", "")
 
     deleted = event.get("deleted_text") or ""
-    if origin == "human" and inserted and deleted:
+    # Only override to human_edit for actual content changes, not retags.
+    if event_type != "retag" and origin == "human" and inserted and deleted:
         origin = "human_edit"
 
     pm_end = _pm_end(doc)
@@ -94,6 +96,15 @@ def _apply_event(doc: _DocBuffer, event: dict) -> None:
 
     from_text = min(from_text, len(doc))
     to_text = min(to_text, len(doc))
+
+    # Re-tag: change origin in place without modifying text content.
+    # This is used by the manual Attribution button to override provenance
+    # tags for a selected range.
+    if event_type == "retag":
+        for i in range(from_text, to_text):
+            ch, _, _ = doc[i]
+            doc[i] = (ch, origin, edit_type)
+        return
 
     del doc[from_text:to_text]
     new_chars: _DocBuffer = [(ch, origin, edit_type) for ch in inserted]
@@ -135,7 +146,7 @@ async def _replay_events(
     """
     async with db.execute(
         """
-        SELECT from_pos, to_pos, inserted_text, deleted_text,
+        SELECT event_type, from_pos, to_pos, inserted_text, deleted_text,
                origin, edit_type, timestamp
         FROM provenance_events
         WHERE document_id = ?

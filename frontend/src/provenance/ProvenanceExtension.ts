@@ -87,9 +87,31 @@ export const ProvenanceExtension = Extension.create<ProvenanceOptions>({
         '\n',
       )
 
-      // Skip steps that have no visible text effect (e.g. pure node-structure
-      // changes where both old and new content are empty)
-      if (!deletedText && !insertedText) continue
+      // Structural-only changes (e.g. pressing Enter to split a paragraph):
+      // the step inserts block-level tokens that shift PM positions but produce
+      // no visible text.  We must record a '\n' so the replay buffer stays
+      // aligned with PM positions.  Without this, every position after the
+      // split drifts by 2 per missing boundary, causing attribution and
+      // heatmap misalignment.
+      if (!deletedText && !insertedText) {
+        if (step.slice.content.size > 0) {
+          const boundaries = Math.floor(step.slice.content.size / 2)
+          if (boundaries > 0) {
+            this.options.onEvent({
+              event_type: 'insert',
+              from_pos: from,
+              to_pos: to,
+              inserted_text: '\n'.repeat(boundaries),
+              deleted_text: '',
+              author,
+              timestamp: now,
+              origin: aiMeta?.origin ?? 'human',
+              edit_type: null,
+            })
+          }
+        }
+        continue
+      }
 
       const event_type: RawProvenanceEvent['event_type'] =
         deletedText && insertedText

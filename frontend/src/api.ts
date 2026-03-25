@@ -39,7 +39,7 @@ export interface ProvenanceEvent {
 }
 
 export interface RawProvenanceEvent {
-  event_type: 'insert' | 'delete' | 'replace'
+  event_type: 'insert' | 'delete' | 'replace' | 'retag'
   from_pos: number
   to_pos: number
   inserted_text: string

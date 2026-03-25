@@ -97,7 +97,7 @@ TipTap editor with toolbar (Bold, Italic, H1–H3, lists, blockquote, **Source**
 
 **Manual Snapshot button**: flushes pending provenance events then calls `POST /timeline/{doc_id}/snapshot` to capture a snapshot labeled with the current timestamp (e.g. "Snapshot — Mar 21, 3:45 PM").
 
-**Manual Attribution button**: toolbar dropdown (enabled only when text is selected) that lets users override the provenance tag for selected text. Options (in order): Human, AI Influenced, AI Assisted, AI Generated. "AI Assisted" maps to `ai_modified` origin internally. Pushes a synthetic `replace` provenance event (same text as both inserted and deleted) to `pendingEventsRef` so the tag change is recorded without modifying document content.
+**Manual Attribution button**: toolbar dropdown (enabled only when text is selected) that lets users override the provenance tag for selected text. Options (in order): Human, AI Influenced, AI Assisted, AI Generated. "AI Assisted" maps to `ai_modified` origin internally. Pushes a `retag` provenance event (no text content, just from/to positions and the new origin) to `pendingEventsRef`. The backend handles `retag` by modifying origins in-place rather than delete+insert, so it works correctly even when the selection spans multiple provenance regions. When Source view is active, flushes immediately for instant visual feedback.
 
 Accepts `onSelectionChange?: (text: string | null) => void` — fires with selected text when the user makes a non-empty selection while the editor is focused, or `null` when they place the cursor without selecting. Does NOT fire on blur, so the stored selection survives focus moving to the chat input. (Replaced the old `onRegisterGetSelection` callback pattern.)
 
@@ -130,7 +130,7 @@ Uses `html2canvas` for PNG cards + `jspdf` for PDF (dynamically imported). `LEGE
 ## TipTap extensions
 
 ### `ProvenanceExtension`
-Intercepts every ProseMirror transaction. Skips transactions where both inserted and deleted text are empty (e.g. Enter key). Tags events with `origin` and `edit_type` from transaction meta. Calls `onEvent` callback with a `RawProvenanceEvent`. Does NOT do AI-influence detection — that's handled by the debounced similarity check in EditorPanel.
+Intercepts every ProseMirror transaction. Tags events with `origin` and `edit_type` from transaction meta. Calls `onEvent` callback with a `RawProvenanceEvent`. For structural-only changes (e.g. Enter key splitting a paragraph) where both insertedText and deletedText are empty but the step's slice has content, emits a `'\n'` insert event for each block boundary so the replay buffer stays aligned with PM positions. Does NOT do AI-influence detection — that's handled by the debounced similarity check in EditorPanel.
 
 ### `AttributionExtension`
 Live provenance coloring for the editor. Stores a `DecorationSet` in a ProseMirror plugin (`attributionKey`), maps it through transactions, and returns decorations from `props.decorations` when enabled. Commands: `setAttributionDecos(decos)` (enable + replace), `clearAttributionDecos()` (disable + clear). Immediately decorates AI suggestion acceptances via `ai_suggestion` transaction meta interception. Exports `buildDecorationsFromSpans(doc, spans)` which walks PM text nodes in lockstep with backend `TimelineSpan[]` to build a `DecorationSet`. Origin-based CSS classes: `.attr-span--influenced` (cyan), `.attr-span--assisted` (green), `.attr-span--generated` (amber).
