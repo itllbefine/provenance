@@ -327,55 +327,26 @@
 
 .editor-content .tiptap strong { font-weight: 700; }
 
-/* ── Heatmap decorations ── */
+/* ── Live attribution decorations (origin-based, matches timeline colors) ── */
 
-/* Base span: smooth transition so toggling heatmap fades in/out */
-.heatmap-span {
+.attr-span {
   transition: background-color 0.2s ease;
   border-radius: 2px;
 }
 
-/* ── Human edits ── */
+/* Human origins (human, human_edit) get no decoration — text stays unstyled. */
 
-/* Default: human-typed text with no specific classification.
-   Warm amber tint — the baseline "you wrote this" signal. */
-.heatmap-span--human {
-  background-color: rgba(251, 191, 36, 0.25); /* amber-300 */
+/* AI Influenced — cyan */
+.attr-span--influenced {
+  background-color: rgba(34, 211, 238, 0.20);
 }
 
-/* Human grammar/punctuation/spelling fix — light cyan */
-.heatmap-span--human-grammar-fix {
-  background-color: rgba(34, 211, 238, 0.30); /* cyan-400 */
+/* AI Assisted (ai_modified, ai_collaborative) — green */
+.attr-span--assisted {
+  background-color: rgba(74, 222, 128, 0.20);
 }
 
-/* Human rewording for clarity or tone — light green */
-.heatmap-span--human-wording-change {
-  background-color: rgba(74, 222, 128, 0.30); /* green-400 */
-}
-
-/* Human structural reorganisation — light blue */
-.heatmap-span--human-organizational-move {
-  background-color: rgba(96, 165, 250, 0.35); /* blue-400 */
-}
-
-/* ── AI edits ── */
-
-/* AI grammar/punctuation fix — cyan */
-.heatmap-span--ai-grammar-fix {
-  background-color: rgba(34, 211, 238, 0.30); /* cyan-400 */
-}
-
-/* AI rewording for clarity or tone — green */
-.heatmap-span--ai-wording-change {
-  background-color: rgba(74, 222, 128, 0.30); /* green-400 */
-}
-
-/* AI structural reorganisation — blue */
-.heatmap-span--ai-organizational-move {
-  background-color: rgba(96, 165, 250, 0.35); /* blue-400 */
-}
-
-/* Fallback for AI edits where edit_type is unknown — amber */
-.heatmap-span--ai-modified {
-  background-color: rgba(251, 191, 36, 0.25); /* amber-300 */
+/* AI Generated — amber */
+.attr-span--generated {
+  background-color: rgba(251, 191, 36, 0.22);
 }

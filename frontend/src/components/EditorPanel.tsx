@@ -1,12 +1,11 @@
 import { EditorContent, useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
-// import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import DiffMatchPatch from 'diff-match-patch'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { DismissedSuggestion, Document, RawProvenanceEvent, Suggestion } from '../api'
-import { flushProvenanceEvents, createManualSnapshot } from '../api'
+import { flushProvenanceEvents, createManualSnapshot, getHeatmapSpans } from '../api'
 import { ProvenanceExtension } from '../provenance/ProvenanceExtension'
-// import { HeatmapExtension, heatmapKey, spanCssClass } from '../provenance/HeatmapExtension'
+import { AttributionExtension, buildDecorationsFromSpans } from '../provenance/AttributionExtension'
 import type { SaveStatus } from '../App'
 import ProvenanceDebugPanel from './ProvenanceDebugPanel'
 import YounessModal from './YounessModal'
@@ -43,63 +42,6 @@ const SAVE_LABEL: Record<SaveStatus, string> = {
   unsaved: 'Unsaved changes',
   error: 'Save failed',
 }
-
-// /**
-//  * Build a ProseMirror DecorationSet from backend provenance spans.
-//  *
-//  * The spans are ordered text fragments whose concatenation (minus '\n'
-//  * boundary markers) equals the document's plain text.  We walk the PM
-//  * document's text nodes in order, advancing through the span characters
-//  * in lockstep, and create one Decoration.inline per contiguous run of
-//  * the same (origin, edit_type).
-//  */
-// function buildDecorationsFromSpans(
-//   doc: import('@tiptap/pm/model').Node,
-//   spans: TimelineSpan[],
-// ): DecorationSet {
-//   // Flatten spans into per-character provenance, skipping boundaries and '\n'.
-//   const chars: { cls: string }[] = []
-//   for (const span of spans) {
-//     if (span.origin === 'boundary') continue
-//     // 'human' = original unmodified text, no decoration. Still add entries so
-//     // charIdx stays aligned with document positions for subsequent spans.
-//     const modifierCls = spanCssClass(span.origin, span.edit_type)
-//     const cls = modifierCls ? `heatmap-span ${modifierCls}` : ''
-//     for (const ch of span.text) {
-//       if (ch === '\n') continue
-//       chars.push({ cls })
-//     }
-//   }
-//
-//   const decorations: Decoration[] = []
-//   let charIdx = 0
-//
-//   doc.descendants((node, pos) => {
-//     if (!node.isText || !node.text) return
-//     let runStart = pos
-//     let runCls = charIdx < chars.length ? chars[charIdx].cls : ''
-//
-//     for (let i = 0; i < node.text.length; i++) {
-//       const cls = charIdx < chars.length ? chars[charIdx].cls : ''
-//       charIdx++
-//
-//       if (cls !== runCls) {
-//         // Flush the previous run
-//         if (runCls) {
-//           decorations.push(Decoration.inline(runStart, pos + i, { class: runCls }))
-//         }
-//         runStart = pos + i
-//         runCls = cls
-//       }
-//     }
-//     // Flush the final run for this text node
-//     if (runCls) {
-//       decorations.push(Decoration.inline(runStart, pos + node.text.length, { class: runCls }))
-//     }
-//   })
-//
-//   return DecorationSet.create(doc, decorations)
-// }
 
 const dmpInstance = new DiffMatchPatch()
 
@@ -150,9 +92,11 @@ export default function EditorPanel({
   const [showAttribution, setShowAttribution] = useState(false)
   const [snapshotting, setSnapshotting] = useState(false)
   const [wordCount, setWordCount] = useState(0)
+  const [showSource, setShowSource] = useState(false)
+  const showSourceRef = useRef(false)
+  showSourceRef.current = showSource
   const docPickerRef = useRef<HTMLDivElement>(null)
   const attributionRef = useRef<HTMLDivElement>(null)
-  // const [heatmapLoading, setHeatmapLoading] = useState(false)
 
   // Refs to prevent stale closures in editor callbacks.
   // See the comment in the original EditorPanel for a full explanation.
@@ -248,6 +192,23 @@ export default function EditorPanel({
   const onSelectionChangeRef = useRef(onSelectionChange)
   onSelectionChangeRef.current = onSelectionChange
 
+  // Ref to editor instance for use in callbacks defined before useEditor.
+  const editorRef = useRef<ReturnType<typeof useEditor>>(null)
+
+  // Fetch heatmap spans from the backend and rebuild the decoration set.
+  // Called when the Source toggle is turned on and after each successful flush.
+  async function refreshAttributionDecos() {
+    const ed = editorRef.current
+    if (!ed) return
+    try {
+      const spans = await getHeatmapSpans(documentIdRef.current)
+      const decos = buildDecorationsFromSpans(ed.state.doc, spans)
+      ed.commands.setAttributionDecos(decos)
+    } catch (err) {
+      console.error('Attribution refresh failed:', err)
+    }
+  }
+
   // Flush the pending event buffer to the backend.
   async function flushEvents() {
     // Run similarity check before flushing so events are re-tagged if needed.
@@ -260,6 +221,11 @@ export default function EditorPanel({
     typingAccumRef.current.watermark = 0
     try {
       await flushProvenanceEvents(documentIdRef.current, events)
+      // Refresh attribution decorations after a successful flush so colors
+      // reflect any retagging (e.g. ai_influenced detection).
+      if (showSourceRef.current) {
+        void refreshAttributionDecos()
+      }
     } catch (err) {
       console.error('Provenance flush failed:', err)
       // Put the events back so they aren't lost on a transient error.
@@ -326,7 +292,7 @@ export default function EditorPanel({
         heading: { levels: [1, 2, 3] },
       }),
       provenanceExtension,
-      // HeatmapExtension,
+      AttributionExtension,
     ],
     content: parseContent(initialContent),
     editorProps: {
@@ -361,6 +327,9 @@ export default function EditorPanel({
     },
   })
 
+  // Keep editorRef in sync so callbacks defined before useEditor can access it.
+  editorRef.current = editor
+
   // Register editor callbacks with the parent once the editor is ready.
   useEffect(() => {
     if (!editor) return
@@ -370,7 +339,7 @@ export default function EditorPanel({
     // Finds `originalText` in the document by walking all text nodes and
     // building a flat character→position map. Then dispatches a replacement
     // transaction tagged with 'ai_suggestion' meta so ProvenanceExtension and
-    // HeatmapExtension can record the correct authorship.
+    // AttributionExtension can record the correct authorship.
     function applyEdit(originalText: string, suggestedText: string, editType: string, origin = 'ai_modified'): boolean {
       const { state } = editor!
       const { doc, schema } = state
@@ -455,32 +424,28 @@ export default function EditorPanel({
     }
   }
 
-  // async function handleHeatmapToggle() {
-  //   if (!editor) return
-  //   const isEnabled = heatmapKey.getState(editor.state)?.enabled
-  //   if (isEnabled) {
-  //     // Turning off — just toggle
-  //     editor.chain().focus().toggleHeatmap().run()
-  //     return
-  //   }
-  //   // Turning on — flush pending events, then fetch provenance from backend
-  //   // and build a full decoration set before enabling.
-  //   setHeatmapLoading(true)
-  //   try {
-  //     await flushEvents()
-  //     const spans = await getHeatmapSpans(documentIdRef.current)
-  //     const decos = buildDecorationsFromSpans(editor.state.doc, spans)
-  //     editor.chain().focus().loadHeatmap(decos).run()
-  //   } catch (err) {
-  //     console.error('Heatmap load failed:', err)
-  //     // Fall back to showing whatever live decorations exist
-  //     editor.chain().focus().toggleHeatmap().run()
-  //   } finally {
-  //     setHeatmapLoading(false)
-  //   }
-  // }
+  async function handleSourceToggle() {
+    if (!editor) return
+    if (showSource) {
+      // Turning off
+      editor.commands.clearAttributionDecos()
+      setShowSource(false)
+      return
+    }
+    // Turning on — flush pending events so backend has everything, then load.
+    setShowSource(true)
+    try {
+      await flushEvents()
+      const spans = await getHeatmapSpans(documentIdRef.current)
+      const decos = buildDecorationsFromSpans(editor.state.doc, spans)
+      editor.commands.setAttributionDecos(decos)
+    } catch (err) {
+      console.error('Source view load failed:', err)
+    }
+  }
 
   // When the user switches to a different document, reload the editor content
+  // and refresh attribution decorations if the Source view is active.
   useEffect(() => {
     if (editor) {
       editor.commands.setContent(parseContent(initialContent))
@@ -488,6 +453,10 @@ export default function EditorPanel({
       setContext(initialContext)
       const text = editor.getText()
       setWordCount(text.trim() === '' ? 0 : text.trim().split(/\s+/).length)
+      // Reload attribution decorations for the new document
+      if (showSourceRef.current) {
+        void refreshAttributionDecos()
+      }
     }
     // Only run when documentId changes, not on every render
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -590,14 +559,13 @@ export default function EditorPanel({
 
         <div className="toolbar-divider" />
 
-        {/* <button
-          onClick={() => void handleHeatmapToggle()}
-          className={heatmapKey.getState(editor.state)?.enabled ? 'active' : ''}
-          disabled={heatmapLoading}
-          title="Toggle heatmap view"
+        <button
+          onClick={() => void handleSourceToggle()}
+          className={showSource ? 'active' : ''}
+          title="Show text provenance colors"
         >
-          {heatmapLoading ? 'Loading…' : 'Heat'}
-        </button> */}
+          Source
+        </button>
 
         <button
           onClick={() => setShowDebug((v) => !v)}
