@@ -291,6 +291,7 @@ export default function App() {
           onRegisterFlushEvents={(fn) => { flushEventsRef.current = fn }}
           onSelectionChange={setActiveSelection}
           getSuggestions={() => suggestions}
+          archive={archive}
         />
       </div>
     </div>

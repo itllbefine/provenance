@@ -1,8 +1,9 @@
 import { EditorContent, useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 // import { Decoration, DecorationSet } from '@tiptap/pm/view'
+import DiffMatchPatch from 'diff-match-patch'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { Document, RawProvenanceEvent, Suggestion } from '../api'
+import type { DismissedSuggestion, Document, RawProvenanceEvent, Suggestion } from '../api'
 import { flushProvenanceEvents, createManualSnapshot } from '../api'
 import { ProvenanceExtension } from '../provenance/ProvenanceExtension'
 // import { HeatmapExtension, heatmapKey, spanCssClass } from '../provenance/HeatmapExtension'
@@ -33,6 +34,7 @@ interface Props {
   // Does NOT fire on blur — the stored selection persists when focus moves away.
   onSelectionChange?: (text: string | null) => void
   getSuggestions: () => Suggestion[]
+  archive: DismissedSuggestion[]
 }
 
 const SAVE_LABEL: Record<SaveStatus, string> = {
@@ -99,6 +101,18 @@ const SAVE_LABEL: Record<SaveStatus, string> = {
 //   return DecorationSet.create(doc, decorations)
 // }
 
+const dmpInstance = new DiffMatchPatch()
+
+/** Similarity score (0–1) using diff-match-patch Levenshtein distance. */
+function textSimilarity(a: string, b: string): number {
+  if (a === b) return 1
+  const maxLen = Math.max(a.length, b.length)
+  if (maxLen === 0) return 1
+  const diffs = dmpInstance.diff_main(a, b)
+  const lev = dmpInstance.diff_levenshtein(diffs)
+  return 1 - lev / maxLen
+}
+
 /** Parse stored JSON string back to a ProseMirror doc object, or '' for empty. */
 function parseContent(raw: string) {
   try {
@@ -124,6 +138,7 @@ export default function EditorPanel({
   onRegisterFlushEvents,
   onSelectionChange,
   getSuggestions,
+  archive,
 }: Props) {
   const [title, setTitle] = useState(initialTitle)
   const [context, setContext] = useState(initialContext)
@@ -159,12 +174,73 @@ export default function EditorPanel({
   // Stable callback — reads from refs, so it always has current values.
   const handleProvenanceEventRef = useRef((event: RawProvenanceEvent) => {
     pendingEventsRef.current.push(event)
+
+    // Accumulate human typing for debounced similarity checking.
+    const isHuman = event.origin === 'human' || event.origin === 'human_edit'
+    if (isHuman && event.inserted_text) {
+      typingAccumRef.current.text += event.inserted_text
+
+      // Reset the debounce timer — fires 2s after the last human keystroke.
+      if (similarityTimerRef.current) clearTimeout(similarityTimerRef.current)
+      similarityTimerRef.current = setTimeout(() => {
+        retagPendingHumanEvents()
+      }, 2000)
+    }
   })
 
-  // Keep a ref to getSuggestions so the extension always sees the latest list
-  // without needing to be reconfigured.
+  // Keep a ref to getSuggestions so the debounced similarity check always
+  // sees the latest list.
   const getSuggestionsRef = useRef(getSuggestions)
   getSuggestionsRef.current = getSuggestions
+
+  // Keep a ref to the dismissed archive for the debounced similarity check.
+  const archiveRef = useRef(archive)
+  archiveRef.current = archive
+
+  // Accumulator for human typing: text concatenates insertedText from human
+  // events; watermark tracks which pending events have already been checked.
+  const typingAccumRef = useRef({ text: '', watermark: 0 })
+  const similarityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Check accumulated human typing against visible suggestions + dismissed archive.
+  // If similarity is high enough, re-tag pending human events as ai_modified or
+  // ai_influenced. Called on debounce (2s after typing stops) and before flush.
+  function retagPendingHumanEvents() {
+    const accum = typingAccumRef.current
+    if (accum.text.length < 10) return
+
+    // Build target list: suggested_text from visible suggestions + archive
+    const suggestions = getSuggestionsRef.current()
+    const dismissed = archiveRef.current
+
+    let bestScore = 0
+    for (const s of suggestions) {
+      if (s.edit_type === 'observation') continue
+      bestScore = Math.max(bestScore, textSimilarity(accum.text, s.suggested_text))
+    }
+    for (const d of dismissed) {
+      if (d.edit_type === 'observation') continue
+      bestScore = Math.max(bestScore, textSimilarity(accum.text, d.suggested_text))
+    }
+
+    // ≥80% → ai_modified ("AI Assisted"), 20–79% → ai_influenced, <20% → human (no change)
+    let newOrigin: RawProvenanceEvent['origin'] | null = null
+    if (bestScore >= 0.8) newOrigin = 'ai_modified'
+    else if (bestScore >= 0.2) newOrigin = 'ai_influenced'
+
+    if (newOrigin) {
+      for (let i = accum.watermark; i < pendingEventsRef.current.length; i++) {
+        const ev = pendingEventsRef.current[i]
+        if (ev.origin === 'human' || ev.origin === 'human_edit') {
+          pendingEventsRef.current[i] = { ...ev, origin: newOrigin }
+        }
+      }
+    }
+
+    // Reset: mark all current events as checked, clear accumulated text
+    accum.text = ''
+    accum.watermark = pendingEventsRef.current.length
+  }
 
   // Track whether the editor currently has focus so onSelectionUpdate can
   // distinguish "user actively changed selection" from "blur collapsed it".
@@ -174,9 +250,14 @@ export default function EditorPanel({
 
   // Flush the pending event buffer to the backend.
   async function flushEvents() {
+    // Run similarity check before flushing so events are re-tagged if needed.
+    retagPendingHumanEvents()
+
     const events = pendingEventsRef.current
     if (events.length === 0) return
     pendingEventsRef.current = []
+    // Buffer is empty — reset watermark so future events start from index 0.
+    typingAccumRef.current.watermark = 0
     try {
       await flushProvenanceEvents(documentIdRef.current, events)
     } catch (err) {
@@ -191,6 +272,7 @@ export default function EditorPanel({
     const interval = setInterval(flushEvents, 2000)
     return () => {
       clearInterval(interval)
+      if (similarityTimerRef.current) clearTimeout(similarityTimerRef.current)
       // Final flush when the component unmounts (e.g. document switch)
       void flushEvents()
     }
@@ -234,7 +316,6 @@ export default function EditorPanel({
     () =>
       ProvenanceExtension.configure({
         onEvent: (e) => handleProvenanceEventRef.current(e),
-        getSuggestions: () => getSuggestionsRef.current(),
       }),
     [],
   )

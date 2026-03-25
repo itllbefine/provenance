@@ -1,30 +1,12 @@
 import { Extension } from '@tiptap/core'
 import { ReplaceStep } from '@tiptap/pm/transform'
-import DiffMatchPatch from 'diff-match-patch'
-import type { RawProvenanceEvent, Suggestion } from '../api'
-
-const dmp = new DiffMatchPatch()
-
-// Returns a 0–1 similarity score between two strings using diff-match-patch.
-// Computed as: equal_chars / max(len(a), len(b))
-function similarity(a: string, b: string): number {
-  const maxLen = Math.max(a.length, b.length)
-  if (maxLen === 0) return 1
-  const diffs = dmp.diff_main(a, b)
-  const equalChars = diffs
-    .filter(([op]) => op === 0)
-    .reduce((sum, [, text]) => sum + text.length, 0)
-  return equalChars / maxLen
-}
+import type { RawProvenanceEvent } from '../api'
 
 // The options we accept via ProvenanceExtension.configure({ ... })
 interface ProvenanceOptions {
   // Called with each captured event. The caller is responsible for buffering
   // and sending events to the backend in batches.
   onEvent: (event: RawProvenanceEvent) => void
-  // Returns the currently visible (not yet dismissed) suggestions so the
-  // extension can detect AI-influenced human edits.
-  getSuggestions: () => Suggestion[]
 }
 
 // Shape of the meta value set on transactions that apply an AI suggestion.
@@ -60,7 +42,6 @@ export const ProvenanceExtension = Extension.create<ProvenanceOptions>({
   addOptions() {
     return {
       onEvent: () => {},
-      getSuggestions: (): Suggestion[] => [],
     }
   },
 
@@ -81,7 +62,6 @@ export const ProvenanceExtension = Extension.create<ProvenanceOptions>({
     // Check whether this transaction was dispatched by accepting an AI suggestion.
     const aiMeta = transaction.getMeta('ai_suggestion') as AiSuggestionMeta | undefined
     const author = aiMeta?.author ?? 'local_user'
-    const isHuman = !aiMeta
 
     for (const step of transaction.steps) {
       // ReplaceStep is the ProseMirror step type for all text-level changes.
@@ -122,27 +102,12 @@ export const ProvenanceExtension = Extension.create<ProvenanceOptions>({
       // are stored without a subtype — classification is disabled.
       const edit_type = aiMeta?.edit_type ?? null
 
-      // For human edits with enough content, check if the inserted text
-      // closely matches any currently visible suggestion. If so, tag the
-      // event as ai_influenced or ai_generated instead of plain human.
       // 'human_edit' marks text that replaced existing content (deletedText non-empty).
       // Pure inserts ('human') are original first-draft typing and stay uncolored in the heatmap.
-      let origin: RawProvenanceEvent['origin'] =
+      // AI-influence detection (similarity to suggestions) is handled by a debounced
+      // check in EditorPanel, not here — avoids per-keystroke comparison overhead.
+      const origin: RawProvenanceEvent['origin'] =
         aiMeta?.origin ?? (deletedText ? 'human_edit' : 'human')
-      if (isHuman && insertedText.length >= 10) {
-        const activeSuggestions = this.options.getSuggestions()
-        for (const suggestion of activeSuggestions) {
-          const score = similarity(insertedText, suggestion.suggested_text)
-          if (score === 1) {
-            origin = 'ai_generated'
-            break
-          } else if (score >= 0.8) {
-            origin = 'ai_influenced'
-            // Don't break — a verbatim match from another suggestion could
-            // still upgrade this to ai_generated.
-          }
-        }
-      }
 
       this.options.onEvent({
         event_type,

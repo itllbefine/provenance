@@ -93,6 +93,8 @@ Document management: `handleNewDocument()` calls `createDocument()`, prepends to
 ### `EditorPanel.tsx`
 TipTap editor with toolbar (Bold, Italic, H1–H3, lists, blockquote, Log, Score, Timeline, Snapshot, Context, Attribution, word count). The **Heat button is commented out** — `HeatmapExtension`, `handleHeatmapToggle`, `buildDecorationsFromSpans`, and related imports are all commented out pending a fix. Collapsible context panel (textarea). Registers `applyEdit` and `flushEvents` callbacks via refs. Provenance events buffered in a ref and flushed to backend every 2s (and on unmount). Word count displayed in toolbar to the left of the save indicator. `left-bottom` in App.css uses `overflow: hidden` so RationalePanel controls its own scroll.
 
+**Debounced AI-influence detection**: EditorPanel accumulates insertedText from human provenance events. 2 seconds after the user stops typing, `retagPendingHumanEvents()` compares the accumulated text against `suggested_text` from all visible suggestions AND the dismissed archive (passed as `archive` prop from App). Thresholds: ≥80% similarity → `ai_modified` (AI Assisted), 20–79% → `ai_influenced`, <20% → no change. Only runs when accumulated text is ≥10 characters. Also runs at the start of every `flushEvents()` call to catch events before they leave the client.
+
 **Manual Snapshot button**: flushes pending provenance events then calls `POST /timeline/{doc_id}/snapshot` to capture a snapshot labeled with the current timestamp (e.g. "Snapshot — Mar 21, 3:45 PM").
 
 **Manual Attribution button**: toolbar dropdown (enabled only when text is selected) that lets users override the provenance tag for selected text. Options (in order): Human, AI Influenced, AI Assisted, AI Generated. "AI Assisted" maps to `ai_modified` origin internally. Pushes a synthetic `replace` provenance event (same text as both inserted and deleted) to `pendingEventsRef` so the tag change is recorded without modifying document content.
@@ -126,7 +128,7 @@ Uses `html2canvas` for PNG cards + `jspdf` for PDF (dynamically imported). `LEGE
 ## TipTap extensions
 
 ### `ProvenanceExtension`
-Intercepts every ProseMirror transaction. Skips transactions where both inserted and deleted text are empty (e.g. Enter key). Tags events with `origin` and `edit_type` from transaction meta. Calls `onEvent` callback with a `RawProvenanceEvent`.
+Intercepts every ProseMirror transaction. Skips transactions where both inserted and deleted text are empty (e.g. Enter key). Tags events with `origin` and `edit_type` from transaction meta. Calls `onEvent` callback with a `RawProvenanceEvent`. Does NOT do AI-influence detection — that's handled by the debounced similarity check in EditorPanel.
 
 ### `HeatmapExtension`
 **Currently disabled** — commented out of the editor extensions in `EditorPanel.tsx`. The extension exists in `HeatmapExtension.ts` but is not active. Decorates text with CSS classes based on authorship. Toggle state stored in a ProseMirror plugin key (`heatmapKey`). Each decoration maps `(origin, edit_type)` to a class like `heatmap-span--human-grammar-fix`. Two decoration sources: (1) **backend-loaded** — `loadHeatmap` command accepts a `DecorationSet` built from replayed provenance events fetched via `GET /timeline/{doc_id}/heatmap`, covering all historical edits; (2) **live-tracked** — new edits in the current session are decorated immediately via `ReplaceStep` interception.
@@ -147,3 +149,4 @@ Frontend classifier that assigns `edit_type` to human edits before they're sent 
 - Human edits (`human`/`human_edit` origin) are NOT highlighted in the timeline (transparent) — only AI origins get colored spans
 - Timeline/export colors are origin-based (not edit_type): Human=transparent, AI Influenced=cyan, AI Assisted=green (ai_modified + ai_collaborative), AI Generated=amber
 - Suggestion parsing in `suggestions.py` handles Claude returning items as JSON strings or dicts (normalizes both)
+- AI-influence detection is debounced (2s after typing stops), not per-keystroke, to avoid performance overhead. Checks against both visible suggestions and dismissed archive. Accumulated insertedText is compared via diff-match-patch Levenshtein similarity. Thresholds: ≥80% → ai_modified, 20–79% → ai_influenced, <20% → human. Minimum 10 chars to avoid false positives.
