@@ -3,6 +3,7 @@ import { Plugin, PluginKey } from '@tiptap/pm/state'
 import type { Node as PmNode } from '@tiptap/pm/model'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import { ReplaceStep } from '@tiptap/pm/transform'
+import DiffMatchPatch from 'diff-match-patch'
 import type { TimelineSpan } from '../api'
 
 // ── Plugin state & key ───────────────────────────────────────────────────────
@@ -47,25 +48,71 @@ export function originToClass(origin: string): string {
 /**
  * Build a ProseMirror DecorationSet from backend timeline/heatmap spans.
  *
- * Walks the PM document's text nodes in order and maps each character to the
- * corresponding span origin. Characters at paragraph boundaries ('\n' in span
- * text) are skipped on both sides so positions stay aligned.
+ * Flattens span text (skipping '\n' and 'boundary') into a string with
+ * per-character origins, then aligns it against the PM doc's actual text.
+ * When lengths match we use direct 1:1 mapping; when they differ (e.g.
+ * accumulated position drift from old events) we use diff-match-patch to
+ * robustly align origins onto the real document text.
  */
 export function buildDecorationsFromSpans(
   doc: PmNode,
   spans: TimelineSpan[],
 ): DecorationSet {
-  // Flatten spans into a per-character origin array, skipping newlines and
-  // boundary markers (which correspond to PM structural tokens, not text).
-  const charOrigins: string[] = []
+  // 1. Build flat span string + per-char origin array (skip '\n' and boundary)
+  const spanChars: string[] = []
+  const spanOrigins: string[] = []
   for (const span of spans) {
     if (span.origin === 'boundary') continue
     for (const ch of span.text) {
       if (ch === '\n') continue
-      charOrigins.push(span.origin)
+      spanChars.push(ch)
+      spanOrigins.push(span.origin)
+    }
+  }
+  const spanStr = spanChars.join('')
+
+  // 2. Build flat PM doc text
+  const pmChars: string[] = []
+  doc.descendants((node) => {
+    if (node.isText && node.text) {
+      for (const ch of node.text) pmChars.push(ch)
+    }
+  })
+  const pmStr = pmChars.join('')
+
+  // 3. Produce a per-PM-char origin array, aligned via diff if needed
+  let pmOrigins: string[]
+  if (spanStr.length === pmStr.length) {
+    // Fast path: 1:1
+    pmOrigins = spanOrigins
+  } else {
+    // Use diff-match-patch to align span text onto PM text
+    const dmp = new DiffMatchPatch()
+    const diffs = dmp.diff_main(spanStr, pmStr)
+    dmp.diff_cleanupSemantic(diffs)
+
+    pmOrigins = []
+    let spanIdx = 0
+    for (const [op, text] of diffs) {
+      if (op === 0) {
+        // Equal: copy origins from span
+        for (let i = 0; i < text.length; i++) {
+          pmOrigins.push(spanIdx < spanOrigins.length ? spanOrigins[spanIdx] : 'human')
+          spanIdx++
+        }
+      } else if (op === -1) {
+        // Deleted from span (extra chars in replay buffer) — skip them
+        spanIdx += text.length
+      } else {
+        // Inserted in PM (chars not in replay buffer) — default to human
+        for (let i = 0; i < text.length; i++) {
+          pmOrigins.push('human')
+        }
+      }
     }
   }
 
+  // 4. Walk PM text nodes and build decorations from pmOrigins
   const decorations: Decoration[] = []
   let charIdx = 0
 
@@ -73,14 +120,13 @@ export function buildDecorationsFromSpans(
     if (!node.isText || !node.text) return
 
     let runStart = pos
-    let runOrigin = charIdx < charOrigins.length ? charOrigins[charIdx] : 'human'
+    let runOrigin = charIdx < pmOrigins.length ? pmOrigins[charIdx] : 'human'
 
     for (let i = 0; i < node.text.length; i++) {
-      const origin = charIdx < charOrigins.length ? charOrigins[charIdx] : 'human'
+      const origin = charIdx < pmOrigins.length ? pmOrigins[charIdx] : 'human'
       charIdx++
 
       if (origin !== runOrigin) {
-        // Flush the previous run
         const cls = originToClass(runOrigin)
         if (cls) {
           decorations.push(Decoration.inline(runStart, pos + i, { class: cls }))
@@ -89,7 +135,6 @@ export function buildDecorationsFromSpans(
         runOrigin = origin
       }
     }
-    // Flush the final run for this text node
     const cls = originToClass(runOrigin)
     if (cls) {
       decorations.push(Decoration.inline(runStart, pos + node.text.length, { class: cls }))
