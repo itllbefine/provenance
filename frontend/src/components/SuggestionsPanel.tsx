@@ -1,5 +1,6 @@
 import DiffMatchPatch from 'diff-match-patch'
-import type { Suggestion } from '../api'
+import { useState } from 'react'
+import type { DismissedSuggestion, Suggestion } from '../api'
 import './SidePanel.css'
 import './SuggestionsPanel.css'
 
@@ -16,6 +17,8 @@ interface Props {
   onFocus: (index: number) => void
   onAccept: (index: number) => void
   onDismiss: (index: number) => void
+  archive: DismissedSuggestion[]
+  onRestore: (dismissedId: string) => void
 }
 
 const dmp = new DiffMatchPatch()
@@ -37,7 +40,7 @@ function DiffView({ original, suggested }: { original: string; suggested: string
   )
 }
 
-const EDIT_TYPE_LABEL: Record<Suggestion['edit_type'], string> = {
+const EDIT_TYPE_LABEL: Record<string, string> = {
   grammar_fix: 'Grammar',
   wording_change: 'Wording',
   organizational_move: 'Structure',
@@ -55,7 +58,11 @@ export default function SuggestionsPanel({
   onFocus,
   onAccept,
   onDismiss,
+  archive,
+  onRestore,
 }: Props) {
+  const [showArchive, setShowArchive] = useState(false)
+
   return (
     <div className="side-panel suggestions-panel">
       <div className="panel-header suggestions-header">
@@ -90,52 +97,99 @@ export default function SuggestionsPanel({
         <div className="suggestions-error">{generateError}</div>
       )}
 
-      {!isGenerating && suggestions.length === 0 && !generateError && (
-        <div className="panel-placeholder">
-          Click <strong>Suggest</strong> to get AI editing suggestions for this document.
-        </div>
-      )}
-
-      <div className="suggestions-list">
-        {suggestions.map((s, i) => (
-          <div
-            key={s.id}
-            className={`suggestion-card${focusedIndex === i ? ' suggestion-card--focused' : ''}`}
-            onClick={() => onFocus(i)}
-          >
-            <div className="suggestion-card__meta">
-              <span className={`suggestion-badge suggestion-badge--${s.edit_type}`}>
-                {EDIT_TYPE_LABEL[s.edit_type]}
-              </span>
-            </div>
-            {s.edit_type === 'observation' ? (
-              <div className="suggestion-observation">{s.rationale}</div>
-            ) : (
-              <div className="suggestion-card__diff">
-                <DiffView original={s.original_text} suggested={s.suggested_text} />
-              </div>
-            )}
-            <div className="suggestion-card__actions">
-              {s.edit_type !== 'observation' && (
-                <button
-                  className="suggestion-action suggestion-action--accept"
-                  onClick={(e) => { e.stopPropagation(); onAccept(i) }}
-                  title="Accept this suggestion"
-                >
-                  Accept
-                </button>
-              )}
-              <button
-                className="suggestion-action suggestion-action--dismiss"
-                onClick={(e) => { e.stopPropagation(); onDismiss(i) }}
-                title="Dismiss this suggestion"
-              >
-                Dismiss
-              </button>
-            </div>
-          </div>
-        ))}
+      {/* Archive toggle */}
+      <div className="archive-toggle-bar">
+        <button
+          className={`archive-toggle-btn${showArchive ? ' archive-toggle-btn--active' : ''}`}
+          onClick={() => setShowArchive((v) => !v)}
+        >
+          Archive{archive.length > 0 ? ` (${archive.length})` : ''}
+        </button>
       </div>
+
+      {showArchive ? (
+        <div className="suggestions-list archive-list">
+          {archive.length === 0 && (
+            <div className="panel-placeholder">
+              No dismissed suggestions yet.
+            </div>
+          )}
+          {archive.map((d) => (
+            <div key={d.id} className="suggestion-card suggestion-card--archived">
+              <div className="suggestion-card__meta">
+                <span className={`suggestion-badge suggestion-badge--${d.edit_type}`}>
+                  {EDIT_TYPE_LABEL[d.edit_type] ?? d.edit_type}
+                </span>
+              </div>
+              {d.edit_type === 'observation' ? (
+                <div className="suggestion-observation">{d.rationale}</div>
+              ) : (
+                <div className="suggestion-card__diff">
+                  <DiffView original={d.original_text} suggested={d.suggested_text} />
+                </div>
+              )}
+              <div className="suggestion-card__actions">
+                <button
+                  className="suggestion-action suggestion-action--restore"
+                  onClick={() => onRestore(d.id)}
+                  title="Restore — allow this suggestion again"
+                >
+                  Restore
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <>
+          {!isGenerating && suggestions.length === 0 && !generateError && (
+            <div className="panel-placeholder">
+              Click <strong>Suggest</strong> to get AI editing suggestions for this document.
+            </div>
+          )}
+
+          <div className="suggestions-list">
+            {suggestions.map((s, i) => (
+              <div
+                key={s.id}
+                className={`suggestion-card${focusedIndex === i ? ' suggestion-card--focused' : ''}`}
+                onClick={() => onFocus(i)}
+              >
+                <div className="suggestion-card__meta">
+                  <span className={`suggestion-badge suggestion-badge--${s.edit_type}`}>
+                    {EDIT_TYPE_LABEL[s.edit_type]}
+                  </span>
+                </div>
+                {s.edit_type === 'observation' ? (
+                  <div className="suggestion-observation">{s.rationale}</div>
+                ) : (
+                  <div className="suggestion-card__diff">
+                    <DiffView original={s.original_text} suggested={s.suggested_text} />
+                  </div>
+                )}
+                <div className="suggestion-card__actions">
+                  {s.edit_type !== 'observation' && (
+                    <button
+                      className="suggestion-action suggestion-action--accept"
+                      onClick={(e) => { e.stopPropagation(); onAccept(i) }}
+                      title="Accept this suggestion"
+                    >
+                      Accept
+                    </button>
+                  )}
+                  <button
+                    className="suggestion-action suggestion-action--dismiss"
+                    onClick={(e) => { e.stopPropagation(); onDismiss(i) }}
+                    title="Dismiss this suggestion"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   )
 }

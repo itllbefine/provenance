@@ -1,12 +1,37 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { createDocument, generateSuggestions, listDocuments, saveDocument } from './api'
-import type { Document, Suggestion } from './api'
+import DiffMatchPatch from 'diff-match-patch'
+import { createDocument, dismissSuggestion, generateSuggestions, listDismissed, listDocuments, restoreDismissed, saveDocument } from './api'
+import type { DismissedSuggestion, Document, Suggestion } from './api'
 import EditorPanel from './components/EditorPanel'
 import RationalePanel from './components/RationalePanel'
 import SuggestionsPanel from './components/SuggestionsPanel'
 import './App.css'
 
 export type SaveStatus = 'saved' | 'saving' | 'unsaved' | 'error'
+
+const dmp = new DiffMatchPatch()
+
+/** Compute similarity ratio (0–1) between two strings using diff-match-patch Levenshtein. */
+function similarity(a: string, b: string): number {
+  if (a === b) return 1
+  if (!a && !b) return 1
+  if (!a || !b) return 0
+  const diffs = dmp.diff_main(a, b)
+  const levenshtein = dmp.diff_levenshtein(diffs)
+  const maxLen = Math.max(a.length, b.length)
+  return maxLen === 0 ? 1 : 1 - levenshtein / maxLen
+}
+
+/** Returns true if a suggestion is too similar to any dismissed suggestion. */
+function isDuplicate(suggestion: Suggestion, dismissed: DismissedSuggestion[]): boolean {
+  // Observations have no text to compare — never filter them
+  if (suggestion.edit_type === 'observation') return false
+  return dismissed.some(
+    (d) =>
+      similarity(suggestion.original_text, d.original_text) > 0.8 &&
+      similarity(suggestion.suggested_text, d.suggested_text) > 0.8,
+  )
+}
 
 export default function App() {
   const [doc, setDoc] = useState<Document | null>(null)
@@ -20,9 +45,8 @@ export default function App() {
   const [isGenerating, setIsGenerating] = useState(false)
   const [generateError, setGenerateError] = useState<string | null>(null)
   const [suggestionModel, setSuggestionModel] = useState<'claude-sonnet-4-6' | 'claude-opus-4-6'>('claude-sonnet-4-6')
-  // original_text values the user has dismissed — sent to the backend so Claude
-  // won't re-suggest them. Reset when switching documents.
-  const [dismissed, setDismissed] = useState<string[]>([])
+  // Persisted archive of dismissed suggestions — loaded from the DB on doc switch.
+  const [archive, setArchive] = useState<DismissedSuggestion[]>([])
 
   // EditorPanel registers its applyEdit function here so App can call it
   // when the user accepts a suggestion.
@@ -103,14 +127,17 @@ export default function App() {
     [doc],
   )
 
-  // Reset suggestion state when the user switches to a different document
+  // Reset suggestion state and load archive when the user switches documents
   const docId = doc?.id
   useEffect(() => {
-    setDismissed([])
     setSuggestions([])
     setFocusedIndex(null)
     setGenerateError(null)
     setActiveSelection(null)
+    setArchive([])
+    if (docId) {
+      listDismissed(docId).then(setArchive).catch(() => setArchive([]))
+    }
   }, [docId])
 
   // Debounced context save — separate from the title/content save so they
@@ -140,7 +167,9 @@ export default function App() {
     try {
       // Flush pending provenance events so the snapshot is complete.
       await flushEventsRef.current?.()
-      const results = await generateSuggestions(doc.id, dismissed, suggestionModel)
+      const raw = await generateSuggestions(doc.id, suggestionModel)
+      // Client-side filtering: suppress suggestions that are too similar to archived ones.
+      const results = raw.filter((s) => !isDuplicate(s, archive))
       setSuggestions(results)
       if (results.length > 0) setFocusedIndex(0)
     } catch (err) {
@@ -174,12 +203,24 @@ export default function App() {
 
   function handleDismiss(index: number) {
     const suggestion = suggestions[index]
-    // Observations have no original_text to track; only add dismissals for
-    // specific edits so they don't pollute the dismissed list.
-    if (suggestion?.original_text) {
-      setDismissed((prev) => [...prev, suggestion.original_text])
-    }
+    if (!suggestion || !doc) { removeSuggestion(index); return }
+    // Persist the dismissal to the database (observations included for archive viewing)
+    dismissSuggestion(
+      doc.id,
+      suggestion.original_text,
+      suggestion.suggested_text,
+      suggestion.edit_type,
+      suggestion.rationale,
+    )
+      .then((dismissed) => setArchive((prev) => [dismissed, ...prev]))
+      .catch((err) => console.error('Failed to archive dismissal:', err))
     removeSuggestion(index)
+  }
+
+  function handleRestore(dismissedId: string) {
+    restoreDismissed(dismissedId)
+      .then(() => setArchive((prev) => prev.filter((d) => d.id !== dismissedId)))
+      .catch((err) => console.error('Failed to restore suggestion:', err))
   }
 
   function removeSuggestion(index: number) {
@@ -210,6 +251,8 @@ export default function App() {
             onFocus={setFocusedIndex}
             onAccept={handleAccept}
             onDismiss={handleDismiss}
+            archive={archive}
+            onRestore={handleRestore}
           />
         </div>
         <div className="left-bottom">

@@ -77,11 +77,11 @@ export async function getProvenanceEvents(docId: string): Promise<ProvenanceEven
   return res.json() as Promise<ProvenanceEvent[]>
 }
 
-export async function generateSuggestions(documentId: string, dismissed: string[] = [], model = 'claude-sonnet-4-6'): Promise<Suggestion[]> {
+export async function generateSuggestions(documentId: string, model = 'claude-sonnet-4-6'): Promise<Suggestion[]> {
   const res = await fetch(`${BASE}/suggestions/generate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ document_id: documentId, dismissed, model }),
+    body: JSON.stringify({ document_id: documentId, model }),
   })
   if (!res.ok) {
     const body = await res.json().catch(() => ({})) as { detail?: string }
@@ -232,6 +232,51 @@ export async function chatWithContext(
     throw new Error(body.detail ?? `Request failed: ${res.statusText}`)
   }
   return res.json() as Promise<ChatResponse>
+}
+
+// ── Dismissed suggestions archive ────────────────────────────────────────────
+
+export interface DismissedSuggestion {
+  id: string
+  document_id: string
+  original_text: string
+  suggested_text: string
+  edit_type: string
+  rationale: string
+  dismissed_at: string
+}
+
+export async function listDismissed(documentId: string): Promise<DismissedSuggestion[]> {
+  const res = await fetch(`${BASE}/dismissed/${documentId}`)
+  if (!res.ok) throw new Error(`Failed to list dismissed: ${res.statusText}`)
+  return res.json() as Promise<DismissedSuggestion[]>
+}
+
+export async function dismissSuggestion(
+  documentId: string,
+  originalText: string,
+  suggestedText: string,
+  editType: string,
+  rationale: string,
+): Promise<DismissedSuggestion> {
+  const res = await fetch(`${BASE}/dismissed/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      document_id: documentId,
+      original_text: originalText,
+      suggested_text: suggestedText,
+      edit_type: editType,
+      rationale: rationale,
+    }),
+  })
+  if (!res.ok) throw new Error(`Failed to dismiss suggestion: ${res.statusText}`)
+  return res.json() as Promise<DismissedSuggestion>
+}
+
+export async function restoreDismissed(dismissedId: string): Promise<void> {
+  const res = await fetch(`${BASE}/dismissed/${dismissedId}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error(`Failed to restore suggestion: ${res.statusText}`)
 }
 
 export async function saveDocument(

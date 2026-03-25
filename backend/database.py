@@ -92,6 +92,20 @@ async def init_db() -> None:
             )
         """)
 
+        # Dismissed suggestions archive — persists across sessions so the same
+        # suggestion isn't re-shown after being dismissed.
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS dismissed_suggestions (
+                id              TEXT PRIMARY KEY,
+                document_id     TEXT NOT NULL REFERENCES documents(id),
+                original_text   TEXT NOT NULL,
+                suggested_text  TEXT NOT NULL,
+                edit_type       TEXT NOT NULL,
+                rationale       TEXT NOT NULL DEFAULT '',
+                dismissed_at    TEXT NOT NULL
+            )
+        """)
+
         await db.commit()
 
     # Add origin/edit_type columns to provenance_events if they don't exist yet.

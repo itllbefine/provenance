@@ -329,19 +329,6 @@ async def generate_suggestions(
         else document_text
     )
 
-    # Keep only dismissed originals that still appear verbatim in the document.
-    # If the text was changed, it won't match and is silently dropped — this
-    # implements the "unless I make a change to it" behaviour.
-    active_dismissed = [t for t in body.dismissed if t in document_text]
-
-    if active_dismissed:
-        dismissed_block = "\n".join(f'- "{t}"' for t in active_dismissed)
-        user_message += (
-            f"\n\nThe user has already dismissed the following suggestions and does NOT "
-            f"want them suggested again. Do not include any suggestion whose "
-            f"`original_text` matches one of these:\n{dismissed_block}"
-        )
-
     if body.model not in ALLOWED_SUGGESTION_MODELS:
         raise HTTPException(
             status_code=422,
@@ -384,14 +371,6 @@ async def generate_suggestions(
             except json.JSONDecodeError:
                 continue
         # Skip anything else
-
-    # Safety net: drop any suggestion whose original_text is still dismissed,
-    # in case Claude ignored the instruction.
-    dismissed_set = set(active_dismissed)
-    normalized = [
-        s for s in normalized
-        if s.get("original_text", "") not in dismissed_set
-    ]
 
     return [
         SuggestionResponse(

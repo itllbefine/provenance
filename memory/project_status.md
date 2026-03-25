@@ -38,6 +38,7 @@ Migrations for new columns use `ALTER TABLE … ADD COLUMN` wrapped in try/excep
 | `text_snapshots` | periodic plain-text snapshots per document (legacy, unused) |
 | `timeline_snapshots` | snapshots captured on Suggest clicks or manually — stores provenance-tagged spans as JSON, optional `label` column for custom names |
 | `provenance_spans` | legacy spans table (not actively used by current routes) |
+| `dismissed_suggestions` | archive of dismissed AI suggestions per document — id, document_id, original_text, suggested_text, edit_type, rationale, dismissed_at |
 
 `origin` values: `'human' | 'human_edit' | 'ai_generated' | 'ai_modified' | 'ai_influenced' | 'ai_collaborative'`
 - `'human'` = original first-draft typing (pure insert, nothing deleted) — no heatmap color
@@ -55,8 +56,13 @@ Provenance tagging rule: tags only move toward more human involvement, never les
 - `POST /documents/{id}/provenance` — flush provenance events from frontend
 - `GET /documents/{id}/provenance` — get provenance events (for debug panel)
 
+### `dismissed.py` — `/dismissed`
+- `GET /dismissed/{document_id}` — list all archived dismissed suggestions for a document (newest first)
+- `POST /dismissed/` — archive a dismissed suggestion (document_id, original_text, suggested_text, edit_type, rationale)
+- `DELETE /dismissed/{dismissed_id}` — restore (un-dismiss) a suggestion by removing it from the archive
+
 ### `suggestions.py` — `/suggestions`
-- `POST /suggestions/generate` — calls Claude Sonnet with the document text and returns 3–5 structured editing suggestions. Accepts a `dismissed: list[str]` field; active dismissed entries (those still present verbatim in the document) are injected into the prompt so Claude avoids re-suggesting them, and Claude's output is post-filtered as a safety net. Uses tool_use for structured JSON output.
+- `POST /suggestions/generate` — calls Claude with the document text and returns 3–6 structured editing suggestions. Dismissed-suggestion filtering is handled client-side via diff-match-patch similarity scoring (not sent to Claude). Uses tool_use for structured JSON output.
 - `POST /suggestions/chat` — multi-turn chat with Claude, optionally proposes edits via `propose_edit` tool. `tool_choice: "auto"` so Claude can reply in plain text or propose an edit. Full conversation history sent each request (stateless backend).
 
 Edit types: `grammar_fix`, `wording_change`, `organizational_move`.
@@ -94,7 +100,7 @@ TipTap editor with toolbar (Bold, Italic, H1–H3, lists, blockquote, Log, Score
 Accepts `onSelectionChange?: (text: string | null) => void` — fires with selected text when the user makes a non-empty selection while the editor is focused, or `null` when they place the cursor without selecting. Does NOT fire on blur, so the stored selection survives focus moving to the chat input. (Replaced the old `onRegisterGetSelection` callback pattern.)
 
 ### `SuggestionsPanel.tsx`
-Left top panel. Lists AI suggestions with diff view (diff-match-patch), Accept/Dismiss buttons, edit-type badges. Model selector (Sonnet/Opus). Generate button. Accept calls `applyEdit`; Dismiss adds `original_text` to the dismissed list.
+Left top panel. Lists AI suggestions with diff view (diff-match-patch), Accept/Dismiss buttons, edit-type badges. Model selector (Sonnet/Opus). Generate button. Accept calls `applyEdit`; Dismiss persists the suggestion to the `dismissed_suggestions` DB table via the `/dismissed` API. Toggleable **Archive** view shows all previously dismissed suggestions with a **Restore** button that removes them from the archive. Archive is loaded from DB on document switch and persists across sessions. New suggestions from Claude are filtered client-side against the archive using diff-match-patch similarity scoring (>80% similarity on both original_text and suggested_text = suppressed).
 
 ### `RationalePanel.tsx`
 Left bottom panel. Shows focused suggestion's rationale. Multi-turn chat thread with `LocalMessage[]` state. If Claude proposes an edit via the `propose_edit` tool, shows inline `DiffView` and Accept button (tagged `ai_collaborative`). Accepting a chat edit clears the proposed edit from that message (mirrors SuggestionsPanel behavior); `onAcceptChatEdit` returns a boolean so the panel knows whether the edit applied. Conversation resets when focused suggestion changes.
@@ -131,7 +137,7 @@ Frontend classifier that assigns `edit_type` to human edits before they're sent 
 ## Key design decisions
 
 - ProseMirror positions include structural tokens (1 per char, 2 per `\n`); timeline replay uses a custom `_pm_to_text` walker to map PM positions to flat buffer indices
-- Dismissed suggestions stored in frontend state keyed by `original_text`; auto-cleared by backend when original text no longer appears verbatim in the document
+- Dismissed suggestions persisted in `dismissed_suggestions` DB table per document; loaded on doc switch. New suggestions filtered client-side using diff-match-patch Levenshtein similarity (>80% on both original_text and suggested_text = suppressed). Dismissed list is NOT sent to Claude (saves tokens). Archive view in SuggestionsPanel shows all dismissed with Restore button.
 - Provenance events buffered in a ref and flushed every 2s — not per-keystroke — to avoid hammering the backend
 - Document context is a free-text field per document describing purpose/tone/audience; injected into the suggestions system prompt when non-empty
 - Conversation history is stateless on backend — full history sent with each chat request

@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from database import init_db
-from routers import documents, provenance, suggestions, timeline, youness
+from routers import dismissed, documents, provenance, suggestions, timeline, youness
 
 # Load ANTHROPIC_API_KEY (and any other vars) from backend/.env if present.
 # This must run before any route handlers that use the API key.
@@ -32,6 +32,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(dismissed.router)
 app.include_router(documents.router)
 app.include_router(provenance.router)
 app.include_router(suggestions.router)

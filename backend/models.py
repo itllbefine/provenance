@@ -106,7 +106,6 @@ ALLOWED_SUGGESTION_MODELS = {"claude-sonnet-4-6", "claude-opus-4-6"}
 
 class SuggestionRequest(BaseModel):
     document_id: str
-    dismissed: list[str] = []  # original_text values the user has dismissed
     model: str = "claude-sonnet-4-6"
 
 
@@ -142,3 +141,23 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     message: str
     suggested_edit: Optional[SuggestedEdit] = None
+
+
+# --- Dismissed suggestions archive ---
+
+class DismissedSuggestionCreate(BaseModel):
+    document_id: str
+    original_text: str
+    suggested_text: str
+    edit_type: str
+    rationale: str = ""
+
+
+class DismissedSuggestionResponse(BaseModel):
+    id: str
+    document_id: str
+    original_text: str
+    suggested_text: str
+    edit_type: str
+    rationale: str
+    dismissed_at: str
