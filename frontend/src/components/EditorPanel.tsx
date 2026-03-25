@@ -344,6 +344,17 @@ export default function EditorPanel({
       const { state } = editor!
       const { doc, schema } = state
 
+      // Net-new insertion: append as a new paragraph at the end of the document
+      if (!originalText) {
+        if (!suggestedText) return false
+        const tr = state.tr
+        const paragraph = schema.nodes.paragraph.create(null, schema.text(suggestedText))
+        tr.insert(doc.content.size, paragraph)
+        tr.setMeta('ai_suggestion', { edit_type: editType, origin, author: 'claude-sonnet-4-6' })
+        editor!.view.dispatch(tr)
+        return true
+      }
+
       // Build a flat array: for each character in text nodes, record its
       // absolute ProseMirror position. This lets us map a string-index match
       // back to document positions even across adjacent text nodes.
@@ -377,7 +388,19 @@ export default function EditorPanel({
         lastTextEnd = pos + node.text.length
       })
 
-      const idx = combined.indexOf(originalText)
+      let idx = combined.indexOf(originalText)
+
+      // Fuzzy fallback: if exact match fails, use diff-match-patch to find
+      // the best approximate match in the document.
+      if (idx === -1) {
+        const dmp = new DiffMatchPatch()
+        // match_main returns the index of the best match, or -1.
+        // Match_Threshold controls fuzziness (0 = exact, 1 = very loose).
+        dmp.Match_Threshold = 0.4
+        dmp.Match_Distance = 10000
+        idx = dmp.match_main(combined, originalText, 0)
+      }
+
       if (idx === -1) return false
 
       // If originalText spans a paragraph boundary, posMap at the start or end

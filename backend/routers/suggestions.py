@@ -163,7 +163,8 @@ CHAT_EDIT_TOOL: dict = {
                 "type": "string",
                 "description": (
                     "The EXACT verbatim text from the document to change — "
-                    "copy it character-for-character, including punctuation."
+                    "copy it character-for-character, including punctuation. "
+                    "Leave empty to append a new paragraph at the end of the document."
                 ),
             },
             "suggested_text": {
@@ -199,6 +200,7 @@ Guidelines:
 - When you have a concrete edit to propose, call the propose_edit tool. Include your natural reply in the tool's "message" field.
 - If you're just discussing or explaining without a specific edit, reply in plain text — don't call the tool.
 - When proposing an edit, the original_text must be an EXACT verbatim excerpt from the document.
+- To ADD new text (a new paragraph, sentence, etc.) that doesn't replace existing text, set original_text to "" (empty string). The new text will be appended at the end of the document.
 - Keep suggestions targeted: change only what needs changing, not whole paragraphs.
 - Be specific: explain *why* a change improves the writing."""
 
