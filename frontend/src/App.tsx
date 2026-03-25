@@ -262,8 +262,8 @@ export default function App() {
             suggestionModel={suggestionModel}
             activeSelection={activeSelection}
             onClearSelection={() => setActiveSelection(null)}
-            onAcceptChatEdit={(original, suggested, editType) => {
-              const applied = applyEditRef.current?.(original, suggested, editType, 'ai_collaborative')
+            onAcceptChatEdit={(original, suggested, editType, origin) => {
+              const applied = applyEditRef.current?.(original, suggested, editType, origin)
               if (!applied) {
                 setGenerateError(
                   `Could not find "${original.slice(0, 40)}…" in the document. ` +

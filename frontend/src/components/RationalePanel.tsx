@@ -9,6 +9,8 @@ interface LocalMessage {
   role: 'user' | 'assistant'
   content: string
   suggestedEdit?: SuggestedEdit
+  /** For assistant messages: was there context (selection or suggestion) when the user sent the triggering message? */
+  hadContext?: boolean
 }
 
 interface Props {
@@ -19,7 +21,7 @@ interface Props {
   activeSelection: string | null
   /** Call to dismiss the stored selection (e.g. user clicks the ✕ on the preview). */
   onClearSelection: () => void
-  onAcceptChatEdit: (original: string, suggested: string, editType: string) => boolean
+  onAcceptChatEdit: (original: string, suggested: string, editType: string, origin: string) => boolean
 }
 
 const dmp = new DiffMatchPatch()
@@ -84,6 +86,9 @@ export default function RationalePanel({
     setIsLoading(true)
     setError(null)
 
+    // Remember whether context was available — needed later to determine provenance origin.
+    const hadContext = !!contextText
+
     try {
       // Only send role+content to the API
       const apiMessages: ChatMessage[] = nextMessages.map(({ role, content }) => ({ role, content }))
@@ -95,6 +100,7 @@ export default function RationalePanel({
           role: 'assistant',
           content: res.message,
           suggestedEdit: res.suggested_edit ?? undefined,
+          hadContext,
         },
       ])
     } catch (err) {
@@ -143,10 +149,19 @@ export default function RationalePanel({
                       <button
                         className="chat-accept-btn"
                         onClick={() => {
+                          // Determine provenance origin based on chat context:
+                          // - Multi-turn refinement (prior assistant messages) → ai_modified (AI Assisted)
+                          // - Had selection/suggestion context → ai_modified (AI Assisted)
+                          // - No context, single turn → ai_generated (AI Generated)
+                          const priorAssistantCount = messages.slice(0, i).filter(m => m.role === 'assistant').length
+                          const isRefinement = priorAssistantCount > 0
+                          const origin = isRefinement || msg.hadContext ? 'ai_modified' : 'ai_generated'
+
                           const applied = onAcceptChatEdit(
                             msg.suggestedEdit!.original_text,
                             msg.suggestedEdit!.suggested_text,
                             msg.suggestedEdit!.edit_type,
+                            origin,
                           )
                           if (applied) {
                             // Remove the proposed edit from this message (mirrors
