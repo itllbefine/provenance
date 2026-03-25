@@ -633,6 +633,27 @@ export default function EditorPanel({
         </span>
       </div>
 
+      {showSource && (
+        <div className="source-legend">
+          <span className="source-legend-item">
+            <span className="source-legend-swatch source-legend-swatch--human" />
+            Human
+          </span>
+          <span className="source-legend-item">
+            <span className="source-legend-swatch source-legend-swatch--influenced" />
+            AI Influenced
+          </span>
+          <span className="source-legend-item">
+            <span className="source-legend-swatch source-legend-swatch--assisted" />
+            AI Assisted
+          </span>
+          <span className="source-legend-item">
+            <span className="source-legend-swatch source-legend-swatch--generated" />
+            AI Generated
+          </span>
+        </div>
+      )}
+
       {showContext && (
         <div className="context-panel">
           <label className="context-label" htmlFor="doc-context">
