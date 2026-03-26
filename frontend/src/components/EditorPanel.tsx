@@ -2,7 +2,7 @@ import { EditorContent, useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import DiffMatchPatch from 'diff-match-patch'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { DismissedSuggestion, Document, RawProvenanceEvent, Suggestion } from '../api'
+import type { DismissedSuggestion, Document, RawProvenanceEvent, Suggestion, TimelineSpan } from '../api'
 import { flushProvenanceEvents, createManualSnapshot, getHeatmapSpans } from '../api'
 import { ProvenanceExtension } from '../provenance/ProvenanceExtension'
 import { AttributionExtension, buildDecorationsFromSpans } from '../provenance/AttributionExtension'
@@ -94,6 +94,7 @@ export default function EditorPanel({
   const [wordCount, setWordCount] = useState(0)
   const [showSource, setShowSource] = useState(false)
   const showSourceRef = useRef(false)
+  const [heatmapSpans, setHeatmapSpans] = useState<TimelineSpan[]>([])
   showSourceRef.current = showSource
   const docPickerRef = useRef<HTMLDivElement>(null)
   const attributionRef = useRef<HTMLDivElement>(null)
@@ -202,6 +203,7 @@ export default function EditorPanel({
     if (!ed) return
     try {
       const spans = await getHeatmapSpans(documentIdRef.current)
+      setHeatmapSpans(spans)
       const decos = buildDecorationsFromSpans(ed.state.doc, spans)
       ed.commands.setAttributionDecos(decos)
     } catch (err) {
@@ -453,6 +455,7 @@ export default function EditorPanel({
       // Turning off
       editor.commands.clearAttributionDecos()
       setShowSource(false)
+      setHeatmapSpans([])
       return
     }
     // Turning on — flush pending events so backend has everything, then load.
@@ -460,6 +463,7 @@ export default function EditorPanel({
     try {
       await flushEvents()
       const spans = await getHeatmapSpans(documentIdRef.current)
+      setHeatmapSpans(spans)
       const decos = buildDecorationsFromSpans(editor.state.doc, spans)
       editor.commands.setAttributionDecos(decos)
     } catch (err) {
@@ -525,6 +529,30 @@ export default function EditorPanel({
   }
 
   const hasSelection = editor ? editor.state.selection.from !== editor.state.selection.to : false
+
+  // Compute attribution percentages from heatmap spans for the source legend.
+  const sourcePcts: [number, number, number, number] = (() => {
+    const originToIdx: Record<string, number> = {
+      human: 0, human_edit: 0,
+      ai_influenced: 1,
+      ai_modified: 2, ai_collaborative: 2,
+      ai_generated: 3,
+    }
+    const counts = [0, 0, 0, 0]
+    for (const span of heatmapSpans) {
+      if (span.origin === 'boundary') continue
+      const idx = originToIdx[span.origin] ?? 0
+      for (const ch of span.text) {
+        if (ch !== ' ' && ch !== '\n' && ch !== '\t') counts[idx]++
+      }
+    }
+    const total = counts.reduce((a, b) => a + b, 0)
+    if (total === 0) return [0, 0, 0, 0]
+    const p = counts.map((c) => Math.floor((c / total) * 100))
+    const rem = 100 - p.reduce((a, b) => a + b, 0)
+    if (rem > 0) p[counts.indexOf(Math.max(...counts))] += rem
+    return p as [number, number, number, number]
+  })()
 
   if (!editor) return null
 
@@ -663,19 +691,19 @@ export default function EditorPanel({
         <div className="source-legend">
           <span className="source-legend-item">
             <span className="source-legend-swatch source-legend-swatch--human" />
-            Human
+            Human — {sourcePcts[0]}%
           </span>
           <span className="source-legend-item">
             <span className="source-legend-swatch source-legend-swatch--influenced" />
-            AI Influenced
+            AI Influenced — {sourcePcts[1]}%
           </span>
           <span className="source-legend-item">
             <span className="source-legend-swatch source-legend-swatch--assisted" />
-            AI Assisted
+            AI Assisted — {sourcePcts[2]}%
           </span>
           <span className="source-legend-item">
             <span className="source-legend-swatch source-legend-swatch--generated" />
-            AI Generated
+            AI Generated — {sourcePcts[3]}%
           </span>
         </div>
       )}

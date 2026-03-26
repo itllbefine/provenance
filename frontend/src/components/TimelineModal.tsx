@@ -26,6 +26,35 @@ LEGEND_ITEMS.forEach((item, i) => {
 })
 
 /**
+ * Count non-space, non-newline body characters per legend category and return
+ * rounded percentages that always sum to exactly 100. The largest category
+ * absorbs any rounding remainder.
+ */
+function computeAttribPcts(spans: TimelineSpan[]): number[] {
+  const counts: number[] = Array.from({ length: LEGEND_ITEMS.length }, () => 0)
+  for (const span of spans) {
+    if (span.origin === 'boundary') continue
+    const idx = ORIGIN_INDEX[span.origin] ?? 0
+    for (const ch of span.text) {
+      if (ch !== ' ' && ch !== '\n' && ch !== '\t') counts[idx]++
+    }
+  }
+  const total = counts.reduce((a, b) => a + b, 0)
+  if (total === 0) return Array.from({ length: LEGEND_ITEMS.length }, () => 0)
+
+  const floored: number[] = counts.map((c) => Math.floor((c / total) * 100))
+  const remainder = 100 - floored.reduce((a, b) => a + b, 0)
+  if (remainder > 0) {
+    let maxIdx = 0
+    for (let i = 1; i < counts.length; i++) {
+      if (counts[i] > counts[maxIdx]) maxIdx = i
+    }
+    floored[maxIdx] += remainder
+  }
+  return floored
+}
+
+/**
  * Map a provenance origin to a CSS background-color string.
  */
 function spanBg(origin: string, _editType: string | null): string {
@@ -122,14 +151,14 @@ function MilestoneSnapshot({
   )
 }
 
-function ColorKey() {
+function ColorKey({ pcts }: { pcts?: number[] }) {
   return (
     <div className="tl-legend">
       <div className="tl-legend-group">
-        {LEGEND_ITEMS.map((item) => (
+        {LEGEND_ITEMS.map((item, i) => (
           <span key={item.label} className="tl-legend-item">
             <span className="tl-legend-swatch" style={{ background: item.cssColor === 'transparent' ? '#fff' : item.cssColor, border: item.cssColor === 'transparent' ? '1px solid #ddd' : 'none' }} />
-            {item.label}
+            {item.label}{pcts ? ` — ${pcts[i]}%` : ''}
           </span>
         ))}
       </div>
@@ -505,6 +534,32 @@ function renderSpansToPdf(
       pdf.text(item.text, item.x, item.y)
     }
   }
+
+  // --- Attribution footer (italic, after body text) ---
+  const pcts = computeAttribPcts(spans)
+  const footerLines = [
+    'Made with Provenance',
+    `Human — ${pcts[0]}%`,
+    `AI-Influenced — ${pcts[1]}%`,
+    `AI-Assisted — ${pcts[2]}%`,
+    `AI-Generated — ${pcts[3]}%`,
+  ]
+  const footerFontSize = Math.round(9 * scale)
+  const footerLineH = footerFontSize * 1.6
+
+  pdf.setPage(totalPages)
+  let fy = y + lineH * 2
+  if (fy + footerLines.length * footerLineH > pageH - margin) {
+    pdf.addPage()
+    fy = margin + Math.round(20 * scale)
+  }
+  pdf.setFont('times', 'italic')
+  pdf.setFontSize(footerFontSize)
+  pdf.setTextColor(140, 140, 140)
+  for (const line of footerLines) {
+    pdf.text(line, margin, fy)
+    fy += footerLineH
+  }
 }
 
 // -- Main export function -----------------------------------------------------
@@ -662,6 +717,8 @@ export default function TimelineModal({ documentId, onClose }: Props) {
   }
 
   const canExport = !!data && data.milestones.length > 0 && !exporting
+  const currentSpans = data?.milestones.find((m) => m.label === 'Current')?.spans
+  const attribPcts = currentSpans ? computeAttribPcts(currentSpans) : undefined
 
   return (
     <div className="tl-overlay" onClick={onClose}>
@@ -689,7 +746,7 @@ export default function TimelineModal({ documentId, onClose }: Props) {
 
         {exportError && <p className="tl-export-error">{exportError}</p>}
 
-        <ColorKey />
+        <ColorKey pcts={attribPcts} />
 
         <div className="tl-body">
           {loading && <p className="tl-hint">Loading…</p>}
