@@ -89,10 +89,6 @@ frontend/src/
 | Origin | Meaning |
 |---|---|
 | `human` | Original typing — no prior content replaced |
-| `human_edit` | Human replaced existing content |
-| `ai_generated` | Accepted AI suggestion with no user context |
-| `ai_modified` | Accepted AI suggestion with selection/suggestion context, or multi-turn chat refinement |
 | `ai_influenced` | Human typed text with 20–79% similarity to an AI suggestion |
-| `ai_collaborative` | Chat edit accepted after multi-turn conversation |
-
-Tags only move toward more human involvement, never less.
+| `ai_assisted` | Chat edit accepted after multi-turn conversation |
+| `ai_generated` | Accepted AI suggestion with no user context |

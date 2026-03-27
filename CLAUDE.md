@@ -5,6 +5,12 @@
 - Python is in a venv at backend/.venv — use backend/.venv/bin/pip or backend/.venv/bin/python3.12 -m pip to install packages
 - The general outline for the project is in PROMPT.md, split into seven iterative phases
 - Ask before making architectural decisions that aren't in PROMPT.md
+- Before making changes to frontend code, read `frontend/PROJECT.md` to identify which files are relevant. Do not read source files you don't need.
+- Before making changes to backend code, read `backend/PROJECT.md` to identify which files are relevant. Do not read source files you don't need.
+- Before making any architectural decisions, read `ARCHITECTURE.md`.
+- After finishing a task that changes the architecture, API, components, or database schema, update `backend/PROJECT.md`, `frontend/PROJECT.md`, and/or `ARCHITECTURE.md` as appropriate before finishing.
+- Keep changes scoped to the minimum files necessary.
+- Default to Sonnet. Do not suggest switching to Opus.
 ## Memory
 
 There are two memory systems. Keep them separate — don't duplicate content between them.

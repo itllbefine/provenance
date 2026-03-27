@@ -4,7 +4,14 @@ description: Full current state of the Provenance app: all 7 phases plus collabo
 type: project
 ---
 
-All 7 phases from PROMPT.md are complete, plus an additional collaborative chat feature. Last updated 2026-03-24.
+All 7 phases from PROMPT.md are complete, plus an additional collaborative chat feature. Last updated 2026-03-26.
+
+## Documentation files
+
+- **`ARCHITECTURE.md`** — project root. Covers frontend↔backend connection, data flow for 6 key operations, position encoding, provenance replay, Claude API usage table, known issues, and full file map. Read this before making architectural decisions.
+- **`backend/PROJECT.md`** — full backend API, schema, router, and model documentation. Read before touching backend code.
+- **`frontend/PROJECT.md`** — full frontend component, extension, and utility documentation. Read before touching frontend code.
+- **`CLAUDE.md`** — dev rules: read relevant PROJECT.md before changes, read ARCHITECTURE.md before arch decisions, update docs after arch/API/schema changes, keep changes minimal, default to Sonnet.
 
 ## App layout
 
@@ -138,7 +145,7 @@ Intercepts every ProseMirror transaction. Tags events with `origin` and `edit_ty
 Live provenance coloring for the editor. Stores a `DecorationSet` in a ProseMirror plugin (`attributionKey`), maps it through transactions, and returns decorations from `props.decorations` when enabled. Commands: `setAttributionDecos(decos)` (enable + replace), `clearAttributionDecos()` (disable + clear). Immediately decorates AI suggestion acceptances via `ai_suggestion` transaction meta interception. Exports `buildDecorationsFromSpans(doc, spans)` which builds a per-PM-char origin array from backend spans. When span text length matches PM doc text, uses direct 1:1 mapping; when they differ (e.g. accumulated position drift from old events), uses diff-match-patch to robustly align span origins onto PM text (extra span chars skipped, unmatched PM chars default to 'human'). Origin-based CSS classes: `.attr-span--influenced` (cyan), `.attr-span--assisted` (green), `.attr-span--generated` (amber).
 
 ### `classifier.ts`
-Frontend classifier that assigns `edit_type` to human edits before they're sent to the backend, providing an initial classification that the backend may override.
+**Unused.** `classifyHumanEdit` is exported but not called at runtime. Human edit subtype classification was disabled; kept for potential future use.
 
 ## Key design decisions
 
