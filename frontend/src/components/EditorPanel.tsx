@@ -496,16 +496,22 @@ export default function EditorPanel({
     const { from, to } = editor.state.selection
     if (from === to) return
 
+    // Convert PM positions to text positions (structure-independent).
+    const doc = editor.state.doc
+    const textFrom = doc.textBetween(0, from, '\n', '\n').length
+    const textTo = doc.textBetween(0, to, '\n', '\n').length
+
     pendingEventsRef.current.push({
       event_type: 'retag',
-      from_pos: from,
-      to_pos: to,
+      from_pos: textFrom,
+      to_pos: textTo,
       inserted_text: '',
       deleted_text: '',
       author: 'local_user',
       timestamp: new Date().toISOString(),
       origin: origin as RawProvenanceEvent['origin'],
       edit_type: null,
+      pos_type: 'text',
     })
     setShowAttribution(false)
 

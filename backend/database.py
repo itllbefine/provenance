@@ -116,6 +116,7 @@ async def init_db() -> None:
         "ALTER TABLE provenance_events ADD COLUMN edit_type TEXT",
         "ALTER TABLE documents ADD COLUMN context TEXT NOT NULL DEFAULT ''",
         "ALTER TABLE timeline_snapshots ADD COLUMN label TEXT",
+        "ALTER TABLE provenance_events ADD COLUMN pos_type TEXT NOT NULL DEFAULT 'pm'",
     ]:
         try:
             async with aiosqlite.connect(DB_PATH) as _db:

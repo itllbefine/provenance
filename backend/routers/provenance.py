@@ -30,8 +30,8 @@ async def create_events(
             """
             INSERT INTO provenance_events
                 (id, document_id, event_type, from_pos, to_pos,
-                 inserted_text, deleted_text, author, timestamp, origin, edit_type)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 inserted_text, deleted_text, author, timestamp, origin, edit_type, pos_type)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 event_id,
@@ -45,6 +45,7 @@ async def create_events(
                 event.timestamp,
                 event.origin,
                 event.edit_type,
+                event.pos_type,
             ),
         )
         created.append(

@@ -33,7 +33,7 @@ Migrations for new columns use `ALTER TABLE … ADD COLUMN` wrapped in try/excep
 | Table | Purpose |
 |---|---|
 | `documents` | id (UUID), title, content (ProseMirror JSON string), context (user-supplied purpose/tone), created_at, updated_at |
-| `provenance_events` | append-only edit log: event_type, origin, edit_type, position, length, text_delta, author, timestamp, metadata (JSON) |
+| `provenance_events` | append-only edit log: event_type, origin, edit_type, from_pos, to_pos, inserted_text, deleted_text, author, timestamp, pos_type ('pm' or 'text') |
 | `style_samples` | uploaded baseline writing samples for You-ness scoring |
 | `text_snapshots` | periodic plain-text snapshots per document (legacy, unused) |
 | `timeline_snapshots` | snapshots captured on Suggest clicks or manually — stores provenance-tagged spans as JSON, optional `label` column for custom names |
@@ -132,7 +132,7 @@ Uses `html2canvas` for PNG cards + `jspdf` for PDF (dynamically imported). `LEGE
 ## TipTap extensions
 
 ### `ProvenanceExtension`
-Intercepts every ProseMirror transaction. Tags events with `origin` and `edit_type` from transaction meta. Calls `onEvent` callback with a `RawProvenanceEvent`. For structural-only changes (e.g. Enter key splitting a paragraph) where both insertedText and deletedText are empty but the step's slice has content, emits a `'\n'` insert event for each block boundary so the replay buffer stays aligned with PM positions. Does NOT do AI-influence detection — that's handled by the debounced similarity check in EditorPanel.
+Intercepts every ProseMirror transaction. Tags events with `origin` and `edit_type` from transaction meta. Calls `onEvent` callback with a `RawProvenanceEvent`. **Emits text positions** (not PM positions) via `doc.textBetween(0, pos, '\n', '\n').length` — structure-independent, so list/blockquote wrapping and hardBreaks don't cause drift. Tracks intermediate doc states through multi-step transactions by applying each step sequentially. Non-ReplaceStep steps (ReplaceAroundStep for list wrapping, AddMarkStep for bold) advance the intermediate doc without emitting events — the text-position conversion automatically accounts for structural shifts. All new events have `pos_type: 'text'`. Does NOT do AI-influence detection — that's handled by the debounced similarity check in EditorPanel.
 
 ### `AttributionExtension`
 Live provenance coloring for the editor. Stores a `DecorationSet` in a ProseMirror plugin (`attributionKey`), maps it through transactions, and returns decorations from `props.decorations` when enabled. Commands: `setAttributionDecos(decos)` (enable + replace), `clearAttributionDecos()` (disable + clear). Immediately decorates AI suggestion acceptances via `ai_suggestion` transaction meta interception. Exports `buildDecorationsFromSpans(doc, spans)` which builds a per-PM-char origin array from backend spans. When span text length matches PM doc text, uses direct 1:1 mapping; when they differ (e.g. accumulated position drift from old events), uses diff-match-patch to robustly align span origins onto PM text (extra span chars skipped, unmatched PM chars default to 'human'). Origin-based CSS classes: `.attr-span--influenced` (cyan), `.attr-span--assisted` (green), `.attr-span--generated` (amber).
@@ -142,7 +142,7 @@ Frontend classifier that assigns `edit_type` to human edits before they're sent 
 
 ## Key design decisions
 
-- ProseMirror positions include structural tokens (1 per char, 2 per `\n`); timeline replay uses a custom `_pm_to_text` walker to map PM positions to flat buffer indices
+- **Provenance position types**: events have a `pos_type` field (`'pm'` or `'text'`). Old events use PM positions (legacy `_pm_to_text` walker). New events use plain-text positions (direct buffer indices). The `provenance_events` table has a `pos_type` column (default `'pm'`). Backend `_apply_event` branches on this per-event. Old documents retain whatever drift accumulated from structural operations; new documents are correct from the start
 - Dismissed suggestions persisted in `dismissed_suggestions` DB table per document; loaded on doc switch. New suggestions filtered client-side using diff-match-patch Levenshtein similarity (>80% on both original_text and suggested_text = suppressed). Dismissed list is NOT sent to Claude (saves tokens). Archive view in SuggestionsPanel shows all dismissed with Restore button.
 - Provenance events buffered in a ref and flushed every 2s — not per-keystroke — to avoid hammering the backend
 - Document context is a free-text field per document describing purpose/tone/audience; injected into the suggestions system prompt when non-empty

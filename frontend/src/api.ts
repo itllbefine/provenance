@@ -48,6 +48,8 @@ export interface RawProvenanceEvent {
   timestamp: string
   origin: 'human' | 'human_edit' | 'ai_generated' | 'ai_modified' | 'ai_influenced' | 'ai_collaborative'
   edit_type: string | null
+  // 'pm' = legacy ProseMirror positions, 'text' = plain-text positions (structure-independent)
+  pos_type: 'pm' | 'text'
 }
 
 export interface Suggestion {

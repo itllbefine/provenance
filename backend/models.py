@@ -39,6 +39,9 @@ class ProvenanceEventCreate(BaseModel):
     # AI edit types (set at suggestion time):  'grammar_fix' | 'wording_change' | 'organizational_move'
     # Human edit types (set by classifier):    'human_grammar_fix' | 'human_wording_change' | 'human_organizational_move'
     edit_type: Optional[str] = None
+    # 'pm' = legacy ProseMirror positions (depend on node structure)
+    # 'text' = plain-text positions (structure-independent, used by new frontend)
+    pos_type: str = "pm"
 
 
 class ProvenanceBatchCreate(BaseModel):
@@ -59,6 +62,7 @@ class ProvenanceEventResponse(BaseModel):
     timestamp: str
     origin: str = "human"
     edit_type: Optional[str] = None
+    pos_type: str = "pm"
 
 
 # --- You-ness scoring ---

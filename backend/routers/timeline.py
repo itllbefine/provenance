@@ -74,25 +74,35 @@ def _pm_to_text(pm_pos: int, doc: _DocBuffer) -> int:
 
 def _apply_event(doc: _DocBuffer, event: dict) -> None:
     """Apply one provenance event to the text buffer."""
-    from_pm = event["from_pos"]
-    to_pm = event["to_pos"]
     origin = event.get("origin") or "human"
     edit_type = event.get("edit_type")
     inserted = event.get("inserted_text") or ""
     event_type = event.get("event_type", "")
+    pos_type = event.get("pos_type", "pm")
 
     deleted = event.get("deleted_text") or ""
     # Only override to human_edit for actual content changes, not retags.
     if event_type != "retag" and origin == "human" and inserted and deleted:
         origin = "human_edit"
 
-    pm_end = _pm_end(doc)
-    while from_pm > pm_end:
-        doc.append(("\n", "boundary", None))
+    # Convert positions to text-buffer indices.
+    # 'text' positions are already plain-text indices (structure-independent).
+    # 'pm' positions use the legacy ProseMirror mapping (flat paragraph assumption).
+    if pos_type == "text":
+        from_text = event["from_pos"]
+        to_text = event["to_pos"]
+        # Extend buffer if the position is past the end (safety pad).
+        while from_text > len(doc):
+            doc.append(("\n", "boundary", None))
+    else:
+        from_pm = event["from_pos"]
+        to_pm = event["to_pos"]
         pm_end = _pm_end(doc)
-
-    from_text = _pm_to_text(from_pm, doc)
-    to_text = _pm_to_text(to_pm, doc)
+        while from_pm > pm_end:
+            doc.append(("\n", "boundary", None))
+            pm_end = _pm_end(doc)
+        from_text = _pm_to_text(from_pm, doc)
+        to_text = _pm_to_text(to_pm, doc)
 
     from_text = min(from_text, len(doc))
     to_text = min(to_text, len(doc))
@@ -147,7 +157,7 @@ async def _replay_events(
     async with db.execute(
         """
         SELECT event_type, from_pos, to_pos, inserted_text, deleted_text,
-               origin, edit_type, timestamp
+               origin, edit_type, timestamp, pos_type
         FROM provenance_events
         WHERE document_id = ?
         ORDER BY timestamp ASC

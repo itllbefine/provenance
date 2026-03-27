@@ -19,6 +19,23 @@ interface AiSuggestionMeta {
 }
 
 /**
+ * Convert a ProseMirror position to a plain-text index.
+ *
+ * Uses `textBetween(0, pos, '\n', '\n')` — paragraph boundaries and
+ * hardBreaks both become '\n', giving a structure-independent character
+ * index that works regardless of node nesting (lists, blockquotes, etc.).
+ *
+ * This is the key fix for position drift: PM positions depend on document
+ * structure (each wrapper node adds 2 tokens), but text positions don't.
+ */
+function pmToText(doc: import('@tiptap/pm/model').Node, pmPos: number): number {
+  // Clamp to valid range — pos 0 is before the first node token,
+  // and content.size is the last valid position.
+  const clampedPos = Math.min(Math.max(pmPos, 0), doc.content.size)
+  return doc.textBetween(0, clampedPos, '\n', '\n').length
+}
+
+/**
  * A TipTap extension that watches every ProseMirror transaction and emits
  * provenance events for text insertions, deletions, and replacements.
  *
@@ -33,6 +50,17 @@ interface AiSuggestionMeta {
  *   and classify the event as 'insert', 'delete', or 'replace'.
  * - If the transaction carries an 'ai_suggestion' meta value, we use the
  *   author/origin/edit_type from that meta instead of the human defaults.
+ *
+ * Position handling:
+ * - PM positions depend on document node structure (lists, blockquotes add
+ *   extra wrapper tokens). To avoid position drift from structural changes
+ *   (ReplaceAroundStep for list wrapping, etc.), we convert PM positions to
+ *   structure-independent text positions before emitting events.
+ * - We track intermediate document states through multi-step transactions so
+ *   each step's positions are converted relative to the correct doc state.
+ * - Non-ReplaceStep steps (ReplaceAroundStep, AddMarkStep, etc.) advance the
+ *   intermediate doc but don't emit events — the text position conversion
+ *   automatically accounts for any structural shifts they cause.
  */
 export const ProvenanceExtension = Extension.create<ProvenanceOptions>({
   name: 'provenance',
@@ -52,9 +80,6 @@ export const ProvenanceExtension = Extension.create<ProvenanceOptions>({
     // Skip initialization transactions. When TipTap switches content via
     // editor.commands.setContent(), it sets 'preventUpdate' meta. We don't
     // want to log that wholesale replacement as a series of user edits.
-    // NOTE: addToHistory:false is NOT used here because TipTap's focus/blur
-    // plugin uses that flag too, and those transactions have docChanged:false
-    // anyway — but being explicit prevents future confusion.
     if (transaction.getMeta('preventUpdate')) return
 
     const now = new Date().toISOString()
@@ -63,85 +88,79 @@ export const ProvenanceExtension = Extension.create<ProvenanceOptions>({
     const aiMeta = transaction.getMeta('ai_suggestion') as AiSuggestionMeta | undefined
     const author = aiMeta?.author ?? 'local_user'
 
+    // Track intermediate document state for multi-step transactions.
+    // step.from / step.to are positions in the doc AFTER all preceding steps
+    // in this transaction, NOT in transaction.before. We apply each step to
+    // get the correct intermediate doc for position conversion.
+    let intermediateDoc = transaction.before
+
     for (const step of transaction.steps) {
-      // ReplaceStep is the ProseMirror step type for all text-level changes.
-      // Other step types (ReplaceAroundStep for list wrapping, Mark steps for
-      // bold/italic, etc.) don't represent text content changes, so we skip them.
-      if (!(step instanceof ReplaceStep)) continue
+      if (step instanceof ReplaceStep) {
+        // Convert PM positions to plain-text positions.
+        // This makes positions independent of document structure (lists,
+        // blockquotes, headings all work correctly).
+        const textFrom = pmToText(intermediateDoc, step.from)
+        const textTo = pmToText(intermediateDoc, step.to)
 
-      // step.from / step.to are positions in the document BEFORE this step.
-      // transaction.before is the document state before any steps in this
-      // transaction were applied — so these positions are valid against it.
-      const from = step.from
-      const to = step.to
+        // Get deleted text from the intermediate doc (correct for multi-step txns).
+        // '\n' as both blockSep and leafText ensures paragraph boundaries and
+        // hardBreaks both produce '\n', keeping the text representation consistent.
+        const deletedText = intermediateDoc.textBetween(step.from, step.to, '\n', '\n')
 
-      // Get the text that was removed (empty string for a pure insert)
-      const deletedText = transaction.before.textBetween(from, to, '\n')
+        // Get inserted text from the step's slice.
+        const insertedText = step.slice.content.textBetween(
+          0,
+          step.slice.content.size,
+          '\n',
+          '\n',
+        )
 
-      // Get the text being inserted. step.slice.content is a ProseMirror
-      // Fragment (a sequence of nodes). textBetween() on a Fragment extracts
-      // just the text, using '\n' where block boundaries fall.
-      const insertedText = step.slice.content.textBetween(
-        0,
-        step.slice.content.size,
-        '\n',
-      )
+        // Structural-only changes (e.g. pressing Enter to split a paragraph):
+        // the step inserts block-level tokens that shift PM positions but produce
+        // no visible text. With '\n' as leafText, these now produce '\n' in
+        // insertedText, so the check below catches the empty-text case only
+        // when the slice truly has no content (e.g. collapsing an empty paragraph).
+        if (!deletedText && !insertedText) {
+          // Even with no text change, advance the intermediate doc below.
+        } else {
+          const event_type: RawProvenanceEvent['event_type'] =
+            deletedText && insertedText
+              ? 'replace'
+              : deletedText
+                ? 'delete'
+                : 'insert'
 
-      // Structural-only changes (e.g. pressing Enter to split a paragraph):
-      // the step inserts block-level tokens that shift PM positions but produce
-      // no visible text.  We must record a '\n' so the replay buffer stays
-      // aligned with PM positions.  Without this, every position after the
-      // split drifts by 2 per missing boundary, causing attribution and
-      // heatmap misalignment.
-      if (!deletedText && !insertedText) {
-        if (step.slice.content.size > 0) {
-          const boundaries = Math.floor(step.slice.content.size / 2)
-          if (boundaries > 0) {
-            this.options.onEvent({
-              event_type: 'insert',
-              from_pos: from,
-              to_pos: to,
-              inserted_text: '\n'.repeat(boundaries),
-              deleted_text: '',
-              author,
-              timestamp: now,
-              origin: aiMeta?.origin ?? 'human',
-              edit_type: null,
-            })
-          }
+          // For AI suggestions the edit_type is known from the meta. Human edits
+          // are stored without a subtype — classification is disabled.
+          const edit_type = aiMeta?.edit_type ?? null
+
+          // 'human_edit' marks text that replaced existing content (deletedText non-empty).
+          // Pure inserts ('human') are original first-draft typing and stay uncolored.
+          const origin: RawProvenanceEvent['origin'] =
+            aiMeta?.origin ?? (deletedText ? 'human_edit' : 'human')
+
+          this.options.onEvent({
+            event_type,
+            from_pos: textFrom,
+            to_pos: textTo,
+            inserted_text: insertedText,
+            deleted_text: deletedText,
+            author,
+            timestamp: now,
+            origin,
+            edit_type,
+            pos_type: 'text',
+          })
         }
-        continue
       }
 
-      const event_type: RawProvenanceEvent['event_type'] =
-        deletedText && insertedText
-          ? 'replace'
-          : deletedText
-            ? 'delete'
-            : 'insert'
-
-      // For AI suggestions the edit_type is known from the meta. Human edits
-      // are stored without a subtype — classification is disabled.
-      const edit_type = aiMeta?.edit_type ?? null
-
-      // 'human_edit' marks text that replaced existing content (deletedText non-empty).
-      // Pure inserts ('human') are original first-draft typing and stay uncolored in the heatmap.
-      // AI-influence detection (similarity to suggestions) is handled by a debounced
-      // check in EditorPanel, not here — avoids per-keystroke comparison overhead.
-      const origin: RawProvenanceEvent['origin'] =
-        aiMeta?.origin ?? (deletedText ? 'human_edit' : 'human')
-
-      this.options.onEvent({
-        event_type,
-        from_pos: from,
-        to_pos: to,
-        inserted_text: insertedText,
-        deleted_text: deletedText,
-        author,
-        timestamp: now,
-        origin,
-        edit_type,
-      })
+      // Advance to the next intermediate doc state, regardless of step type.
+      // This is crucial: non-ReplaceStep steps (ReplaceAroundStep for list
+      // wrapping, AddMarkStep for bold/italic, etc.) change PM positions.
+      // By advancing the doc, the NEXT step's textBetween conversion
+      // automatically accounts for any structural shifts.
+      const result = step.apply(intermediateDoc)
+      intermediateDoc = result.doc ?? intermediateDoc
     }
   },
 })
