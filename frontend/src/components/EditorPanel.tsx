@@ -6,6 +6,7 @@ import type { DismissedSuggestion, Document, RawProvenanceEvent, Suggestion, Tim
 import { flushProvenanceEvents, createManualSnapshot, getHeatmapSpans } from '../api'
 import { ProvenanceExtension } from '../provenance/ProvenanceExtension'
 import { AttributionExtension, buildDecorationsFromSpans } from '../provenance/AttributionExtension'
+import { ProvenanceMark } from '../provenance/ProvenanceMark'
 import type { SaveStatus } from '../App'
 import ProvenanceDebugPanel from './ProvenanceDebugPanel'
 import YounessModal from './YounessModal'
@@ -295,6 +296,7 @@ export default function EditorPanel({
       }),
       provenanceExtension,
       AttributionExtension,
+      ProvenanceMark,
     ],
     content: parseContent(initialContent),
     editorProps: {

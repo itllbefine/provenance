@@ -144,6 +144,7 @@ Central HTTP client. All functions `throw` on non-2xx responses.
 - `StarterKit` — headings (H1–H3), bold, italic, bullet list, ordered list, blockquote, paragraph, hard break, etc.
 - `ProvenanceExtension` — custom extension; watches transactions and emits provenance events.
 - `AttributionExtension` — custom extension; renders provenance color decorations.
+- `ProvenanceMark` — custom Mark extension; embeds provenance origin/timestamp directly in the document schema.
 
 ### Provenance event pipeline
 
@@ -443,6 +444,41 @@ Maps origin strings to CSS class strings:
 
 ---
 
+## `src/provenance/ProvenanceMark.ts`
+
+**TipTap Mark extension.** Embeds provenance metadata directly in the ProseMirror document schema as a serializable mark. Unlike `AttributionExtension` (ephemeral decorations from backend heatmap spans), this mark persists in the document JSON across saves and reloads.
+
+### Commands
+
+| Command | Description |
+|---|---|
+| `setProvenance({ origin, timestamp })` | Apply the provenance mark to the current selection |
+| `unsetProvenance()` | Remove the provenance mark from the current selection |
+
+### Attributes
+
+| Attribute | Type | Description |
+|---|---|---|
+| `origin` | `'human' \| 'ai_influenced' \| 'ai_assisted' \| 'ai_generated'` | Authorship classification |
+| `timestamp` | ISO 8601 string | When the provenance was recorded |
+
+### Rendered HTML
+
+`<span data-provenance data-origin="..." data-timestamp="...">text</span>`
+
+Parsed back from HTML via the `span[data-provenance]` selector, so it does not conflict with other `<span>` elements produced by `AttributionExtension` decorations.
+
+### Notes
+
+- `inclusive: false` — typing at the mark boundary does not extend the mark onto new characters.
+- Extension name is `'provenanceMark'` (not `'provenance'`) to avoid collision with `ProvenanceExtension`.
+
+### Dependencies
+
+`@tiptap/core` (`Mark`, `mergeAttributes`)
+
+---
+
 ## `src/provenance/classifier.ts`
 
 **Rule-based human edit classifier.** Exported as a pure function; not currently invoked at runtime (the backend classification path is disabled, and human edits are stored without subtype). Kept for potential future use.
@@ -464,7 +500,7 @@ Maps origin strings to CSS class strings:
 |---|---|---|
 | `@tiptap/react` | `EditorPanel` | React wrapper for TipTap editor |
 | `@tiptap/starter-kit` | `EditorPanel` | Standard ProseMirror node/mark types |
-| `@tiptap/core` | Both extensions | Extension API |
+| `@tiptap/core` | Both extensions, `ProvenanceMark` | Extension/Mark API |
 | `@tiptap/pm/transform` | Both extensions | `ReplaceStep` type |
 | `@tiptap/pm/state` | `AttributionExtension` | `Plugin`, `PluginKey` |
 | `@tiptap/pm/model` | `AttributionExtension` | `Node` type |
