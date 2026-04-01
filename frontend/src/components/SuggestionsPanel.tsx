@@ -1,51 +1,67 @@
-import DiffMatchPatch from 'diff-match-patch'
-import { useState } from 'react'
-import type { DismissedSuggestion, Suggestion } from '../api'
-import './SidePanel.css'
-import './SuggestionsPanel.css'
+import DiffMatchPatch from "diff-match-patch";
+import { useState } from "react";
+import type { DismissedSuggestion, Suggestion } from "../api";
+import "./SidePanel.css";
+import "./SuggestionsPanel.css";
 
-type SuggestionModel = 'claude-sonnet-4-6' | 'claude-opus-4-6'
+type SuggestionModel = "claude-sonnet-4-6" | "claude-opus-4-6";
 
 interface Props {
-  suggestions: Suggestion[]
-  focusedIndex: number | null
-  isGenerating: boolean
-  generateError: string | null
-  model: SuggestionModel
-  onModelChange: (model: SuggestionModel) => void
-  onGenerate: () => void
-  onFocus: (index: number) => void
-  onAccept: (index: number) => void
-  onDismiss: (index: number) => void
-  archive: DismissedSuggestion[]
-  onRestore: (dismissedId: string) => void
+  suggestions: Suggestion[];
+  focusedIndex: number | null;
+  isGenerating: boolean;
+  generateError: string | null;
+  model: SuggestionModel;
+  onModelChange: (model: SuggestionModel) => void;
+  onGenerate: () => void;
+  onFocus: (index: number) => void;
+  onAccept: (index: number) => void;
+  onDismiss: (index: number) => void;
+  archive: DismissedSuggestion[];
+  onRestore: (dismissedId: string) => void;
 }
 
-const dmp = new DiffMatchPatch()
+const dmp = new DiffMatchPatch();
 
 // Renders a visual diff between `original` and `suggested` as React nodes:
 // deletions are <del>, insertions are <ins>, unchanged text is plain.
-function DiffView({ original, suggested }: { original: string; suggested: string }) {
-  const diffs = dmp.diff_main(original, suggested)
-  dmp.diff_cleanupSemantic(diffs)
+function DiffView({
+  original,
+  suggested,
+}: {
+  original: string;
+  suggested: string;
+}) {
+  const diffs = dmp.diff_main(original, suggested);
+  dmp.diff_cleanupSemantic(diffs);
 
   return (
     <span className="suggestion-diff">
       {diffs.map(([op, text], i) => {
-        if (op === 1) return <ins key={i} className="diff-ins">{text}</ins>
-        if (op === -1) return <del key={i} className="diff-del">{text}</del>
-        return <span key={i}>{text}</span>
+        if (op === 1)
+          return (
+            <ins key={i} className="diff-ins">
+              {text}
+            </ins>
+          );
+        if (op === -1)
+          return (
+            <del key={i} className="diff-del">
+              {text}
+            </del>
+          );
+        return <span key={i}>{text}</span>;
       })}
     </span>
-  )
+  );
 }
 
 const EDIT_TYPE_LABEL: Record<string, string> = {
-  grammar_fix: 'Grammar',
-  wording_change: 'Wording',
-  organizational_move: 'Structure',
-  observation: 'Insight',
-}
+  grammar_fix: "Grammar",
+  wording_change: "Wording",
+  organizational_move: "Structure",
+  observation: "Insight",
+};
 
 export default function SuggestionsPanel({
   suggestions,
@@ -61,51 +77,48 @@ export default function SuggestionsPanel({
   archive,
   onRestore,
 }: Props) {
-  const [showArchive, setShowArchive] = useState(false)
+  const [showArchive, setShowArchive] = useState(false);
 
   return (
     <div className="side-panel suggestions-panel">
       <div className="panel-header suggestions-header">
-        <span>Suggestions</span>
-        <div className="model-toggle">
-          <button
-            className={model === 'claude-sonnet-4-6' ? 'active' : ''}
-            onClick={() => onModelChange('claude-sonnet-4-6')}
-            title="Use Claude Sonnet"
-          >
-            Sonnet
-          </button>
-          <button
-            className={model === 'claude-opus-4-6' ? 'active' : ''}
-            onClick={() => onModelChange('claude-opus-4-6')}
-            title="Use Claude Opus"
-          >
-            Opus
-          </button>
+        <div className="model-toggle-group">
+          <div className="model-toggle">
+            <button
+              className={model === "claude-sonnet-4-6" ? "active" : ""}
+              onClick={() => onModelChange("claude-sonnet-4-6")}
+              title="Use Claude Sonnet"
+            >
+              Sonnet
+            </button>
+            <button
+              className={model === "claude-opus-4-6" ? "active" : ""}
+              onClick={() => onModelChange("claude-opus-4-6")}
+              title="Use Claude Opus"
+            >
+              Opus
+            </button>
+          </div>
         </div>
+        <button
+          className={`archive-toggle-btn${showArchive ? " archive-toggle-btn--active" : ""}`}
+          onClick={() => setShowArchive((v) => !v)}
+        >
+          Archive{archive.length > 0 ? ` (${archive.length})` : ""}
+        </button>
         <button
           className="generate-btn"
           onClick={onGenerate}
           disabled={isGenerating}
           title="Ask Claude for editing suggestions"
         >
-          {isGenerating ? 'Thinking…' : 'Suggest'}
+          {isGenerating ? "Thinking…" : "Suggest"}
         </button>
       </div>
 
       {generateError && (
         <div className="suggestions-error">{generateError}</div>
       )}
-
-      {/* Archive toggle */}
-      <div className="archive-toggle-bar">
-        <button
-          className={`archive-toggle-btn${showArchive ? ' archive-toggle-btn--active' : ''}`}
-          onClick={() => setShowArchive((v) => !v)}
-        >
-          Archive{archive.length > 0 ? ` (${archive.length})` : ''}
-        </button>
-      </div>
 
       {showArchive ? (
         <div className="suggestions-list archive-list">
@@ -115,17 +128,25 @@ export default function SuggestionsPanel({
             </div>
           )}
           {archive.map((d) => (
-            <div key={d.id} className="suggestion-card suggestion-card--archived">
+            <div
+              key={d.id}
+              className="suggestion-card suggestion-card--archived"
+            >
               <div className="suggestion-card__meta">
-                <span className={`suggestion-badge suggestion-badge--${d.edit_type}`}>
+                <span
+                  className={`suggestion-badge suggestion-badge--${d.edit_type}`}
+                >
                   {EDIT_TYPE_LABEL[d.edit_type] ?? d.edit_type}
                 </span>
               </div>
-              {d.edit_type === 'observation' ? (
+              {d.edit_type === "observation" ? (
                 <div className="suggestion-observation">{d.rationale}</div>
               ) : (
                 <div className="suggestion-card__diff">
-                  <DiffView original={d.original_text} suggested={d.suggested_text} />
+                  <DiffView
+                    original={d.original_text}
+                    suggested={d.suggested_text}
+                  />
                 </div>
               )}
               <div className="suggestion-card__actions">
@@ -144,7 +165,8 @@ export default function SuggestionsPanel({
         <>
           {!isGenerating && suggestions.length === 0 && !generateError && (
             <div className="panel-placeholder">
-              Click <strong>Suggest</strong> to get AI editing suggestions for this document.
+              Click <strong>Suggest</strong> to get AI editing suggestions for
+              this document.
             </div>
           )}
 
@@ -152,26 +174,34 @@ export default function SuggestionsPanel({
             {suggestions.map((s, i) => (
               <div
                 key={s.id}
-                className={`suggestion-card${focusedIndex === i ? ' suggestion-card--focused' : ''}`}
+                className={`suggestion-card${focusedIndex === i ? " suggestion-card--focused" : ""}`}
                 onClick={() => onFocus(i)}
               >
                 <div className="suggestion-card__meta">
-                  <span className={`suggestion-badge suggestion-badge--${s.edit_type}`}>
+                  <span
+                    className={`suggestion-badge suggestion-badge--${s.edit_type}`}
+                  >
                     {EDIT_TYPE_LABEL[s.edit_type]}
                   </span>
                 </div>
-                {s.edit_type === 'observation' ? (
+                {s.edit_type === "observation" ? (
                   <div className="suggestion-observation">{s.rationale}</div>
                 ) : (
                   <div className="suggestion-card__diff">
-                    <DiffView original={s.original_text} suggested={s.suggested_text} />
+                    <DiffView
+                      original={s.original_text}
+                      suggested={s.suggested_text}
+                    />
                   </div>
                 )}
                 <div className="suggestion-card__actions">
-                  {s.edit_type !== 'observation' && (
+                  {s.edit_type !== "observation" && (
                     <button
                       className="suggestion-action suggestion-action--accept"
-                      onClick={(e) => { e.stopPropagation(); onAccept(i) }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onAccept(i);
+                      }}
                       title="Accept this suggestion"
                     >
                       Accept
@@ -179,7 +209,10 @@ export default function SuggestionsPanel({
                   )}
                   <button
                     className="suggestion-action suggestion-action--dismiss"
-                    onClick={(e) => { e.stopPropagation(); onDismiss(i) }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDismiss(i);
+                    }}
                     title="Dismiss this suggestion"
                   >
                     Dismiss
@@ -191,5 +224,5 @@ export default function SuggestionsPanel({
         </>
       )}
     </div>
-  )
+  );
 }
