@@ -4,6 +4,7 @@ import DiffMatchPatch from 'diff-match-patch'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { DismissedSuggestion, Document, RawProvenanceEvent, Suggestion, TimelineSpan } from '../api'
 import { flushProvenanceEvents, createManualSnapshot, getHeatmapSpans } from '../api'
+import { EditorState } from '@tiptap/pm/state'
 import { ProvenanceExtension } from '../provenance/ProvenanceExtension'
 import { AttributionExtension, buildDecorationsFromSpans } from '../provenance/AttributionExtension'
 import { ProvenanceMark } from '../provenance/ProvenanceMark'
@@ -113,6 +114,11 @@ export default function EditorPanel({
   // though the callback itself is created only once (on editor mount).
   const documentIdRef = useRef(documentId)
   documentIdRef.current = documentId
+
+  // Tracks the documentId from the previous render cycle. Unlike documentIdRef,
+  // this is only updated inside the useEffect([documentId]) callback — after
+  // we've captured the old ID to flush pending events to the correct document.
+  const prevDocumentIdRef = useRef(documentId)
 
   // Buffer for provenance events accumulated since the last flush.
   const pendingEventsRef = useRef<RawProvenanceEvent[]>([])
@@ -476,12 +482,50 @@ export default function EditorPanel({
   // When the user switches to a different document, reload the editor content
   // and refresh attribution decorations if the Source view is active.
   useEffect(() => {
+    const prevId = prevDocumentIdRef.current
+
+    // On document switch: flush the old document's pending events under the
+    // correct (old) document ID, then reset all event-related state so
+    // nothing bleeds into the new document.
+    if (prevId !== documentId) {
+      // Run one final AI-influence check against the OLD document's suggestions
+      // and archive (App's useEffect hasn't cleared them yet — child effects
+      // fire before parent effects in React).
+      retagPendingHumanEvents()
+      if (similarityTimerRef.current) {
+        clearTimeout(similarityTimerRef.current)
+        similarityTimerRef.current = null
+      }
+      const events = pendingEventsRef.current
+      pendingEventsRef.current = []
+      typingAccumRef.current = { text: '', watermark: 0 }
+      if (events.length > 0) {
+        // Flush directly with old ID — can't use flushEvents() because
+        // documentIdRef.current is already the new ID at this point.
+        flushProvenanceEvents(prevId, events).catch(console.error)
+      }
+    }
+    prevDocumentIdRef.current = documentId
+
     if (editor) {
       editor.commands.setContent(parseContent(initialContent))
       setTitle(initialTitle)
       setContext(initialContext)
       const text = editor.getText()
       setWordCount(text.trim() === '' ? 0 : text.trim().split(/\s+/).length)
+
+      // Clear undo/redo history so Ctrl+Z cannot undo across document switches.
+      // EditorState.create with the current doc and plugins resets all plugin
+      // states (including the history stack) to their fresh initial values.
+      // editor.view.updateState installs the state without dispatching a
+      // transaction, so ProvenanceExtension doesn't record this as an edit.
+      const freshState = EditorState.create({
+        schema: editor.state.schema,
+        doc: editor.state.doc,
+        plugins: editor.state.plugins,
+      })
+      editor.view.updateState(freshState)
+
       // Reload attribution decorations for the new document
       if (showSourceRef.current) {
         void refreshAttributionDecos()
